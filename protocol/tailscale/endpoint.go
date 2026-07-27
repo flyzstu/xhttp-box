@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -69,6 +68,7 @@ import (
 
 var (
 	_ adapter.OutboundWithPreferredRoutes = (*Endpoint)(nil)
+	_ adapter.InterfaceUpdateListener     = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
 	_ tun.Port                            = (*Endpoint)(nil)
 )
@@ -329,7 +329,9 @@ func (t *Endpoint) start() error {
 			return err
 		}
 		systemDialer, err := dialer.NewDefault(t.ctx, option.DialerOptions{
-			BindInterface: tunName,
+			AbstractDialerOptions: option.AbstractDialerOptions{
+				BindInterface: tunName,
+			},
 		})
 		if err != nil {
 			_ = systemTun.Close()
@@ -339,20 +341,56 @@ func (t *Endpoint) start() error {
 		t.systemDialer = systemDialer
 		t.server.TunDevice = wgTunDevice
 	}
-	if mark := t.network.AutoRedirectOutputMark(); mark > 0 {
-		controlFunc := t.network.AutoRedirectOutputMarkFunc()
-		if bindFunc := t.network.AutoDetectInterfaceFunc(); bindFunc != nil {
-			controlFunc = control.Append(controlFunc, bindFunc)
-		}
-		netns.SetControlFunc(controlFunc)
-	} else if runtime.GOOS == "android" && t.platformInterface != nil && t.platformInterface.UsePlatformAutoDetectInterfaceControl() {
-		netns.SetControlFunc(func(network, address string, c syscall.RawConn) error {
-			return control.Raw(c, func(fd uintptr) error {
-				return t.platformInterface.AutoDetectInterfaceControl(int(fd))
+	if t.network.AutoRedirectOutputMark() != 0 {
+		netns.SetControlFunc(t.network.AutoRedirectOutputMarkFunc())
+	} else if t.platformInterface != nil && t.platformInterface.UsePlatformNetworkInterfaces() {
+		if t.platformInterface.UsePlatformAutoDetectInterfaceControl() {
+			netns.SetControlFunc(func(network, address string, conn syscall.RawConn) error {
+				return control.Raw(conn, func(fileDescriptor uintptr) error {
+					return t.platformInterface.AutoDetectInterfaceControl(int(fileDescriptor))
+				})
 			})
-		})
+		} else {
+			// NEPacketTunnelProvider sockets are excluded from tunnel routes by
+			// NECP; the empty override only suppresses tailscale's own
+			// default-interface bind, which would select the sing-box utun.
+			netns.SetControlFunc(func(string, string, syscall.RawConn) error {
+				return nil
+			})
+		}
+	} else {
+		bindFunc := t.network.AutoDetectInterfaceFunc()
+		if bindFunc != nil {
+			netns.SetControlFunc(bindFunc)
+			netns.SetListenPacketFunc(t.listenPacket)
+		}
 	}
 	return nil
+}
+
+func (t *Endpoint) listenPacket(ctx context.Context, network string, address string) (nettype.PacketConn, error) {
+	listenConfig := net.ListenConfig{
+		Control: control.Append(t.network.AutoDetectInterfaceFunc(), control.DisableUDPNetReset()),
+	}
+	packetConn, err := listenConfig.ListenPacket(ctx, network, address)
+	if err != nil {
+		return nil, err
+	}
+	udpConn := packetConn.(*net.UDPConn)
+	egressPool := tun.NewUDPEgressPool(tun.UDPEgressPoolOptions{
+		Logger:           t.logger,
+		Network:          network,
+		InterfaceFinder:  t.network.InterfaceFinder(),
+		InterfaceMonitor: t.network.InterfaceMonitor(),
+		IsExempt: func() bool {
+			return t.network.AutoRedirectOutputMark() != 0
+		},
+	})
+	if !egressPool.SetEgressPort(udpConn.LocalAddr().(*net.UDPAddr).AddrPort().Port()) {
+		egressPool.Close()
+		return udpConn, nil
+	}
+	return tun.NewUDPEgressConn(udpConn, egressPool), nil
 }
 
 func (t *Endpoint) postStart() error {
@@ -649,6 +687,7 @@ func (t *Endpoint) Close() error {
 	}
 	netmon.RegisterInterfaceGetter(nil)
 	netns.SetControlFunc(nil)
+	netns.SetListenPacketFunc(nil)
 	if t.fallbackTCPCloser != nil {
 		t.fallbackTCPCloser()
 		t.fallbackTCPCloser = nil
@@ -658,6 +697,16 @@ func (t *Endpoint) Close() error {
 		t.systemTun = nil
 	}
 	return err
+}
+
+func (t *Endpoint) InterfaceUpdated() {
+	if !t.started.Load() {
+		return
+	}
+	netMon, loaded := t.server.Sys().NetMon.GetOK()
+	if loaded && netMon != nil {
+		netMon.InjectEvent()
+	}
 }
 
 func (t *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -800,12 +849,17 @@ func (t *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.
 	metadata.Inbound = t.Tag()
 	metadata.InboundType = t.Type()
 	metadata.Source = source
-	addr4, addr6 := t.server.TailscaleIPs()
-	switch destination.Addr {
-	case addr4:
-		destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
-	case addr6:
-		destination.Addr = netip.IPv6Loopback()
+	destinationAddress := tsaddr.UnmapVia(destination.Addr)
+	if destinationAddress != destination.Addr {
+		destination.Addr = destinationAddress
+	} else {
+		addr4, addr6 := t.server.TailscaleIPs()
+		switch destination.Addr {
+		case addr4:
+			destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
+		case addr6:
+			destination.Addr = netip.IPv6Loopback()
+		}
 	}
 	metadata.Destination = destination
 	t.logger.InfoContext(ctx, "inbound connection from ", source)
@@ -818,16 +872,22 @@ func (t *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
 	metadata.Inbound = t.Tag()
 	metadata.InboundType = t.Type()
 	metadata.Source = source
-	addr4, addr6 := t.server.TailscaleIPs()
-	switch destination.Addr {
-	case addr4:
-		metadata.OriginDestination = destination
-		destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
-		conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, destination)
-	case addr6:
-		metadata.OriginDestination = destination
-		destination.Addr = netip.IPv6Loopback()
-		conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, destination)
+	originDestination := destination
+	destinationAddress := tsaddr.UnmapVia(destination.Addr)
+	if destinationAddress != destination.Addr {
+		destination.Addr = destinationAddress
+	} else {
+		addr4, addr6 := t.server.TailscaleIPs()
+		switch destination.Addr {
+		case addr4:
+			destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
+		case addr6:
+			destination.Addr = netip.IPv6Loopback()
+		}
+	}
+	if destination != originDestination {
+		metadata.OriginDestination = originDestination
+		conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), originDestination, destination)
 	}
 	metadata.Destination = destination
 	t.logger.InfoContext(ctx, "inbound packet connection from ", source)
