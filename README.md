@@ -100,6 +100,28 @@ go test -tags with_utls ./transport/v2rayxhttp
 
 HTTP/3 builds require the `with_quic` build tag.
 
+## Automation
+
+The [upstream synchronization workflow](.github/workflows/upstream-sync.yml)
+checks SagerNet/sing-box release tags every day at 04:43 Asia/Shanghai. It
+exits when the latest upstream tag is already contained in `dev-next`;
+otherwise it attempts a normal Git merge, runs the focused XHTTP tests, and
+opens a draft pull request. Copilot CLI is invoked only when the merge has
+conflicts or the focused tests fail.
+
+To verify Copilot access without changing the repository, run **Sync Upstream
+Releases** manually with **copilot_smoke_test** enabled. The smoke test makes
+one minimal Copilot request using the workflow `GITHUB_TOKEN` and fails if the
+repository or account policy does not grant `copilot-requests: write`.
+
+Maintainers can publish a version from the current `dev-next` head with the
+[versioned release workflow](.github/workflows/release.yml). Run **Publish
+Versioned Release**, enter a version such as `0.2.0`, and optionally mark it as
+a prerelease. The workflow rejects duplicate or malformed versions, runs the
+XHTTP test matrix, builds Linux and Windows archives plus an Alpine package,
+generates `SHA256SUMS`, publishes a same-name GitHub Release, and publishes a
+versioned GHCR image. Stable releases also update the `latest` container tag.
+
 ## Project status and upstream base
 
 XHTTP support is experimental. The current development line started from
