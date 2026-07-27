@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - dev-next
+    paths-ignore:
+      - '**.md'
+  pull_request:
+    branches:
+      - dev-next
+    paths-ignore:
+      - '**.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+          cache: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+          args: --timeout=30m
+          install-mode: binary
+          verify: false
+
+  test:
+    name: Test and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.7'
+          cache: true
+
+      - name: Set build options
+        run: |
+          echo "BUILD_TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" >> "$GITHUB_ENV"
+          echo "LDFLAGS=$(cat release/LDFLAGS)" >> "$GITHUB_ENV"
+
+      - name: Test
+        run: go test -count=1 -exec sudo -tags "$BUILD_TAGS" -ldflags "$LDFLAGS" ./...
+
+      - name: Build
+        run: >-
+          go build -trimpath
+          -o "$RUNNER_TEMP/xhttp-box"
+          -tags "$BUILD_TAGS"
+          -ldflags "$LDFLAGS"
+          ./cmd/sing-box
