@@ -141,6 +141,7 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          base_sha=$(git rev-parse HEAD)
           git switch --create "$BRANCH"
 
           set +e
@@ -148,14 +149,28 @@ jobs:
           merge_status=$?
           set -e
 
+          # Workflows are maintained independently in xhttp-box. Keeping the
+          # base branch versions also lets the built-in GITHUB_TOKEN push the
+          # synchronization branch without Workflow write permission.
+          git rm -r -f --ignore-unmatch .github/workflows
+          git restore \
+            --source="$base_sha" \
+            --staged \
+            --worktree \
+            -- .github/workflows
+
           if (( merge_status == 0 )); then
+            if ! git diff --cached --quiet; then
+              git commit --amend --no-edit
+            fi
             echo "conflicts=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           if [[ -z "$(git diff --name-only --diff-filter=U)" ]]; then
-            echo "The merge failed without producing resolvable file conflicts." >&2
-            exit "$merge_status"
+            git commit --no-edit
+            echo "conflicts=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "conflicts=true" >> "$GITHUB_OUTPUT"
 
@@ -228,9 +243,18 @@ jobs:
       - name: Commit Copilot adaptation
         if: steps.copilot.outcome == 'success'
         env:
+          BASE_SHA: ${{ github.sha }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
         run: |
           set -euo pipefail
+
+          git rm -r -f --ignore-unmatch .github/workflows
+          git restore \
+            --source="$BASE_SHA" \
+            --staged \
+            --worktree \
+            -- .github/workflows
+
           unmerged=$(git diff --name-only --diff-filter=U)
           if [[ -n "$unmerged" ]]; then
             echo "Copilot left unresolved conflicts:" >&2
@@ -269,6 +293,11 @@ jobs:
           COPILOT_USED: ${{ steps.copilot.outcome == 'success' }}
         run: |
           set -euo pipefail
+          if ! git diff --quiet "${GITHUB_SHA}..HEAD" -- .github/workflows; then
+            echo "The synchronization branch contains forbidden workflow changes." >&2
+            git diff --stat "${GITHUB_SHA}..HEAD" -- .github/workflows >&2
+            exit 1
+          fi
           git push --set-upstream origin "HEAD:$BRANCH"
 
           pr_url=$(gh pr create \
