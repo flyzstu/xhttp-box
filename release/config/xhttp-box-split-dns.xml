@@ -7,7 +7,7 @@
         <allow send_destination="org.freedesktop.resolve1"/>
         <allow receive_sender="org.freedesktop.resolve1"/>
     </policy>
-    <policy user="sing-box">
+    <policy user="xhttp-box">
         <allow own="org.freedesktop.resolve1"/>
         <allow send_destination="org.freedesktop.resolve1"/>
         <allow receive_sender="org.freedesktop.resolve1"/>

@@ -113,7 +113,7 @@ jobs:
           set -euo pipefail
           mkdir -p dist
           go build -v -trimpath \
-            -o "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}" \
+            -o "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}" \
             -tags "$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" \
             -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$VERSION' $(cat release/LDFLAGS) -s -w -buildid=" \
             ./cmd/sing-box
@@ -134,7 +134,7 @@ jobs:
           .github/build_alpine_apk.sh \
             x86_64 \
             "$VERSION" \
-            dist/sing-box \
+            dist/xhttp-box \
             "dist/xhttp-box-$VERSION-linux-x86_64.apk"
 
       - name: Archive
@@ -148,13 +148,14 @@ jobs:
           name="xhttp-box-$VERSION-$TARGET_OS-$TARGET_ARCH"
           mkdir -p "dist/$name"
           cp LICENSE "dist/$name/"
-          cp "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}" "dist/$name/"
+          cp NOTICE.md "dist/$name/"
+          cp "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}" "dist/$name/"
           if [[ "$EXTENSION" == "zip" ]]; then
             (cd dist && zip -qr "$name.zip" "$name")
           else
             tar -C dist -czf "dist/$name.tar.gz" "$name"
           fi
-          rm -rf "dist/$name" "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}"
+          rm -rf "dist/$name" "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}"
 
       - name: Upload release assets
         uses: actions/upload-artifact@v4

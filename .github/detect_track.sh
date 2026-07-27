@@ -21,10 +21,10 @@ if [[ "$track" == "stable" ]]; then
 fi
 
 case "$track" in
-  stable)    name=sing-box;           docker_tag=latest ;;
-  beta)      name=sing-box-beta;      docker_tag=latest-beta ;;
-  testing)   name=sing-box-testing;   docker_tag=latest-testing ;;
-  oldstable) name=sing-box-oldstable; docker_tag=latest-oldstable ;;
+  stable)    name=xhttp-box;           docker_tag=latest ;;
+  beta)      name=xhttp-box-beta;      docker_tag=latest-beta ;;
+  testing)   name=xhttp-box-testing;   docker_tag=latest-testing ;;
+  oldstable) name=xhttp-box-oldstable; docker_tag=latest-oldstable ;;
 esac
 
 echo "track=${track} name=${name} docker_tag=${docker_tag}" >&2

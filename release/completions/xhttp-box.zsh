@@ -1,9 +1,9 @@
-#compdef sing-box
-compdef _sing-box sing-box
+#compdef xhttp-box
+compdef _xhttp-box xhttp-box
 
-# zsh completion for sing-box                             -*- shell-script -*-
+# zsh completion for xhttp-box                            -*- shell-script -*-
 
-__sing-box_debug()
+__xhttp-box_debug()
 {
     local file="$BASH_COMP_DEBUG_FILE"
     if [[ -n ${file} ]]; then
@@ -11,7 +11,7 @@ __sing-box_debug()
     fi
 }
 
-_sing-box()
+_xhttp-box()
 {
     local shellCompDirectiveError=1
     local shellCompDirectiveNoSpace=2
@@ -23,21 +23,21 @@ _sing-box()
     local lastParam lastChar flagPrefix requestComp out directive comp lastComp noSpace keepOrder
     local -a completions
 
-    __sing-box_debug "\n========= starting completion logic =========="
-    __sing-box_debug "CURRENT: ${CURRENT}, words[*]: ${words[*]}"
+    __xhttp-box_debug "\n========= starting completion logic =========="
+    __xhttp-box_debug "CURRENT: ${CURRENT}, words[*]: ${words[*]}"
 
     # The user could have moved the cursor backwards on the command-line.
     # We need to trigger completion from the $CURRENT location, so we need
     # to truncate the command-line ($words) up to the $CURRENT location.
     # (We cannot use $CURSOR as its value does not work when a command is an alias.)
     words=("${=words[1,CURRENT]}")
-    __sing-box_debug "Truncated words[*]: ${words[*]},"
+    __xhttp-box_debug "Truncated words[*]: ${words[*]},"
 
     lastParam=${words[-1]}
     lastChar=${lastParam[-1]}
-    __sing-box_debug "lastParam: ${lastParam}, lastChar: ${lastChar}"
+    __xhttp-box_debug "lastParam: ${lastParam}, lastChar: ${lastChar}"
 
-    # For zsh, when completing a flag with an = (e.g., sing-box -n=<TAB>)
+    # For zsh, when completing a flag with an = (e.g., xhttp-box -n=<TAB>)
     # completions must be prefixed with the flag
     setopt local_options BASH_REMATCH
     if [[ "${lastParam}" =~ '-.*=' ]]; then
@@ -50,22 +50,22 @@ _sing-box()
     if [ "${lastChar}" = "" ]; then
         # If the last parameter is complete (there is a space following it)
         # We add an extra empty parameter so we can indicate this to the go completion code.
-        __sing-box_debug "Adding extra empty parameter"
+        __xhttp-box_debug "Adding extra empty parameter"
         requestComp="${requestComp} \"\""
     fi
 
-    __sing-box_debug "About to call: eval ${requestComp}"
+    __xhttp-box_debug "About to call: eval ${requestComp}"
 
     # Use eval to handle any environment variables and such
     out=$(eval ${requestComp} 2>/dev/null)
-    __sing-box_debug "completion output: ${out}"
+    __xhttp-box_debug "completion output: ${out}"
 
     # Extract the directive integer following a : from the last line
     local lastLine
     while IFS='\n' read -r line; do
         lastLine=${line}
     done < <(printf "%s\n" "${out[@]}")
-    __sing-box_debug "last line: ${lastLine}"
+    __xhttp-box_debug "last line: ${lastLine}"
 
     if [ "${lastLine[1]}" = : ]; then
         directive=${lastLine[2,-1]}
@@ -75,16 +75,16 @@ _sing-box()
         out=${out[1,-$suffix]}
     else
         # There is no directive specified.  Leave $out as is.
-        __sing-box_debug "No directive found.  Setting do default"
+        __xhttp-box_debug "No directive found.  Setting do default"
         directive=0
     fi
 
-    __sing-box_debug "directive: ${directive}"
-    __sing-box_debug "completions: ${out}"
-    __sing-box_debug "flagPrefix: ${flagPrefix}"
+    __xhttp-box_debug "directive: ${directive}"
+    __xhttp-box_debug "completions: ${out}"
+    __xhttp-box_debug "flagPrefix: ${flagPrefix}"
 
     if [ $((directive & shellCompDirectiveError)) -ne 0 ]; then
-        __sing-box_debug "Completion received error. Ignoring completions."
+        __xhttp-box_debug "Completion received error. Ignoring completions."
         return
     fi
 
@@ -95,11 +95,11 @@ _sing-box()
     while IFS='\n' read -r comp; do
         # Check if this is an activeHelp statement (i.e., prefixed with $activeHelpMarker)
         if [ "${comp[1,$endIndex]}" = "$activeHelpMarker" ];then
-            __sing-box_debug "ActiveHelp found: $comp"
+            __xhttp-box_debug "ActiveHelp found: $comp"
             comp="${comp[$startIndex,-1]}"
             if [ -n "$comp" ]; then
                 compadd -x "${comp}"
-                __sing-box_debug "ActiveHelp will need delimiter"
+                __xhttp-box_debug "ActiveHelp will need delimiter"
                 hasActiveHelp=1
             fi
 
@@ -116,7 +116,7 @@ _sing-box()
             local tab="$(printf '\t')"
             comp=${comp//$tab/:}
 
-            __sing-box_debug "Adding completion: ${comp}"
+            __xhttp-box_debug "Adding completion: ${comp}"
             completions+=${comp}
             lastComp=$comp
         fi
@@ -127,19 +127,19 @@ _sing-box()
     # - file completion will be performed (so there will be choices after the activeHelp)
     if [ $hasActiveHelp -eq 1 ]; then
         if [ ${#completions} -ne 0 ] || [ $((directive & shellCompDirectiveNoFileComp)) -eq 0 ]; then
-            __sing-box_debug "Adding activeHelp delimiter"
+            __xhttp-box_debug "Adding activeHelp delimiter"
             compadd -x "--"
             hasActiveHelp=0
         fi
     fi
 
     if [ $((directive & shellCompDirectiveNoSpace)) -ne 0 ]; then
-        __sing-box_debug "Activating nospace."
+        __xhttp-box_debug "Activating nospace."
         noSpace="-S ''"
     fi
 
     if [ $((directive & shellCompDirectiveKeepOrder)) -ne 0 ]; then
-        __sing-box_debug "Activating keep order."
+        __xhttp-box_debug "Activating keep order."
         keepOrder="-V"
     fi
 
@@ -156,17 +156,17 @@ _sing-box()
         done
         filteringCmd+=" ${flagPrefix}"
 
-        __sing-box_debug "File filtering command: $filteringCmd"
+        __xhttp-box_debug "File filtering command: $filteringCmd"
         _arguments '*:filename:'"$filteringCmd"
     elif [ $((directive & shellCompDirectiveFilterDirs)) -ne 0 ]; then
         # File completion for directories only
         local subdir
         subdir="${completions[1]}"
         if [ -n "$subdir" ]; then
-            __sing-box_debug "Listing directories in $subdir"
+            __xhttp-box_debug "Listing directories in $subdir"
             pushd "${subdir}" >/dev/null 2>&1
         else
-            __sing-box_debug "Listing directories in ."
+            __xhttp-box_debug "Listing directories in ."
         fi
 
         local result
@@ -177,17 +177,17 @@ _sing-box()
         fi
         return $result
     else
-        __sing-box_debug "Calling _describe"
+        __xhttp-box_debug "Calling _describe"
         if eval _describe $keepOrder "completions" completions $flagPrefix $noSpace; then
-            __sing-box_debug "_describe found some completions"
+            __xhttp-box_debug "_describe found some completions"
 
             # Return the success of having called _describe
             return 0
         else
-            __sing-box_debug "_describe did not find completions."
-            __sing-box_debug "Checking if we should do file completion."
+            __xhttp-box_debug "_describe did not find completions."
+            __xhttp-box_debug "Checking if we should do file completion."
             if [ $((directive & shellCompDirectiveNoFileComp)) -ne 0 ]; then
-                __sing-box_debug "deactivating file completion"
+                __xhttp-box_debug "deactivating file completion"
 
                 # We must return an error code here to let zsh know that there were no
                 # completions found by _describe; this is what will trigger other
@@ -196,7 +196,7 @@ _sing-box()
                 return 1
             else
                 # Perform file completion
-                __sing-box_debug "Activating file completion"
+                __xhttp-box_debug "Activating file completion"
 
                 # We must return the result of this command, so it must be the
                 # last command, or else we must store its result to return it.
@@ -207,6 +207,6 @@ _sing-box()
 }
 
 # don't run the completion function when being source-ed or eval-ed
-if [ "$funcstack[1]" = "_sing-box" ]; then
-    _sing-box
+if [ "$funcstack[1]" = "_xhttp-box" ]; then
+    _xhttp-box
 fi

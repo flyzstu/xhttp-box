@@ -38,21 +38,22 @@ prepare_apk_root
 trap 'rm -rf "$ROOT_DIR" "$APK_ROOT_DIR"' EXIT
 
 # Binary
-install -Dm755 "$BINARY_PATH" "$ROOT_DIR/usr/bin/sing-box"
+install -Dm755 "$BINARY_PATH" "$ROOT_DIR/usr/bin/xhttp-box"
 
 # Config files
-install -Dm644 "$PROJECT/release/config/config.json" "$ROOT_DIR/etc/sing-box/config.json"
-install -Dm644 "$PROJECT/release/config/openwrt.conf" "$ROOT_DIR/etc/config/sing-box"
-install -Dm755 "$PROJECT/release/config/openwrt.init" "$ROOT_DIR/etc/init.d/sing-box"
-install -Dm644 "$PROJECT/release/config/openwrt.keep" "$ROOT_DIR/lib/upgrade/keep.d/sing-box"
+install -Dm644 "$PROJECT/release/config/config.json" "$ROOT_DIR/etc/xhttp-box/config.json"
+install -Dm644 "$PROJECT/release/config/openwrt.conf" "$ROOT_DIR/etc/config/xhttp-box"
+install -Dm755 "$PROJECT/release/config/openwrt.init" "$ROOT_DIR/etc/init.d/xhttp-box"
+install -Dm644 "$PROJECT/release/config/openwrt.keep" "$ROOT_DIR/lib/upgrade/keep.d/xhttp-box"
 
 # Completions
-install -Dm644 "$PROJECT/release/completions/sing-box.bash" "$ROOT_DIR/usr/share/bash-completion/completions/sing-box.bash"
-install -Dm644 "$PROJECT/release/completions/sing-box.fish" "$ROOT_DIR/usr/share/fish/vendor_completions.d/sing-box.fish"
-install -Dm644 "$PROJECT/release/completions/sing-box.zsh" "$ROOT_DIR/usr/share/zsh/site-functions/_sing-box"
+install -Dm644 "$PROJECT/release/completions/xhttp-box.bash" "$ROOT_DIR/usr/share/bash-completion/completions/xhttp-box.bash"
+install -Dm644 "$PROJECT/release/completions/xhttp-box.fish" "$ROOT_DIR/usr/share/fish/vendor_completions.d/xhttp-box.fish"
+install -Dm644 "$PROJECT/release/completions/xhttp-box.zsh" "$ROOT_DIR/usr/share/zsh/site-functions/_xhttp-box"
 
 # License
-install -Dm644 "$PROJECT/LICENSE" "$ROOT_DIR/usr/share/licenses/sing-box/LICENSE"
+install -Dm644 "$PROJECT/LICENSE" "$ROOT_DIR/usr/share/licenses/xhttp-box/LICENSE"
+install -Dm644 "$PROJECT/NOTICE.md" "$ROOT_DIR/usr/share/doc/xhttp-box/NOTICE.md"
 
 # APK metadata
 PACKAGES_DIR="$ROOT_DIR/lib/apk/packages"
@@ -60,8 +61,8 @@ mkdir -p "$PACKAGES_DIR"
 
 # .conffiles
 cat > "$PACKAGES_DIR/.conffiles" <<'EOF'
-/etc/config/sing-box
-/etc/sing-box/config.json
+/etc/config/xhttp-box
+/etc/xhttp-box/config.json
 EOF
 
 # .conffiles_static (sha256 checksums)
@@ -78,14 +79,14 @@ done < "$PACKAGES_DIR/.conffiles" > "$PACKAGES_DIR/.conffiles_static"
 
 # Build APK
 apk --root "$APK_ROOT_DIR" mkpkg \
-  --info "name:sing-box" \
+  --info "name:xhttp-box" \
   --info "version:${APK_VERSION}" \
-  --info "description:The universal proxy platform." \
+  --info "description:Independent, unofficial XHTTP transport implementation derived from sing-box." \
   --info "arch:${ARCHITECTURE}" \
   --info "license:GPL-3.0-or-later" \
-  --info "origin:sing-box" \
-  --info "url:https://sing-box.sagernet.org/" \
-  --info "maintainer:nekohasekai <contact-git@sekai.icu>" \
+  --info "origin:xhttp-box" \
+  --info "url:https://github.com/flyzstu/xhttp-box" \
+  --info "maintainer:flyzstu <flyzstu@gmail.com>" \
   --info "depends:ca-bundle kmod-inet-diag kmod-tun firewall4 kmod-nft-queue" \
   --info "provider-priority:100" \
   --script "pre-deinstall:${PROJECT}/release/config/openwrt.prerm" \

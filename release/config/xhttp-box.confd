@@ -1,0 +1,6 @@
+# /etc/conf.d/xhttp-box: config file for /etc/init.d/xhttp-box
+
+# xhttp-box configuration path, could be file or directory
+# XHTTPBOX_CONFIG=/etc/xhttp-box
+
+# XHTTPBOX_WORKDIR=/var/lib/xhttp-box

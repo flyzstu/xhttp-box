@@ -8,6 +8,11 @@ Independent and unofficial XHTTP transport implementation derived from
 > endorsed by, or supported by SagerNet. Please report issues about this
 > implementation here rather than to the upstream project.
 
+The `sing-box` name is used only for upstream attribution, source-level
+compatibility, and interoperability documentation. Builds and packages
+published by this repository use the `xhttp-box` name. See
+[NOTICE.md](NOTICE.md) for the complete project identity statement.
+
 [![Release](https://img.shields.io/github/v/release/flyzstu/xhttp-box?display_name=tag)](https://github.com/flyzstu/xhttp-box/releases)
 [![XHTTP Lifecycle](https://github.com/flyzstu/xhttp-box/actions/workflows/xhttp-lifecycle.yml/badge.svg?branch=dev-next)](https://github.com/flyzstu/xhttp-box/actions/workflows/xhttp-lifecycle.yml)
 [![License](https://img.shields.io/github/license/flyzstu/xhttp-box)](LICENSE)
@@ -75,6 +80,20 @@ artifacts.
 These builds are experimental. Review the release notes and test them in a
 non-critical environment before deployment.
 
+### Migration from early builds
+
+Early development builds retained the upstream `sing-box` executable and
+service names. Current xhttp-box builds use an independent product identity:
+
+- command: `xhttp-box`
+- system service: `xhttp-box.service`
+- system configuration directory: `/etc/xhttp-box`
+- system data directory: `/var/lib/xhttp-box`
+
+The configuration format is unchanged. Copy an existing configuration into
+the new directory, update scripts to call `xhttp-box`, and enable the new
+service explicitly. No `sing-box` compatibility alias is installed.
+
 ## Documentation
 
 - [XHTTP configuration reference](docs/configuration/shared/v2ray-transport.md#xhttp)
@@ -86,8 +105,11 @@ non-critical environment before deployment.
 Build the command-line program:
 
 ```bash
-go build ./cmd/sing-box
+go build -o xhttp-box ./cmd/sing-box
 ```
+
+The source entry point and Go module retain their upstream paths to keep
+upstream synchronization practical; the distributed command is `xhttp-box`.
 
 Run the XHTTP test suite:
 
@@ -142,6 +164,16 @@ HTTP/1.1/2/3、REALITY/uTLS、XMUX 和独立下载端点，并提供互操作与
 本项目仍处于实验阶段。配置前请阅读
 [中文 XHTTP 文档](docs/configuration/shared/v2ray-transport.zh.md#xhttp)，使用中遇到的
 问题请提交到本仓库，不要提交给上游项目。
+
+本仓库仅在上游署名、源码级兼容和互操作文档中使用 `sing-box` 名称；本仓库发布的
+可执行文件、软件包、服务和镜像均使用 `xhttp-box` 名称。本项目与 SagerNet、
+nekohasekai 及 sing-box 原维护团队不存在隶属、赞助或官方认可关系。完整说明见
+[NOTICE.md](NOTICE.md)。
+
+早期开发构建沿用了上游的可执行文件和服务名称。当前构建使用 `xhttp-box` 命令、
+`xhttp-box.service`、`/etc/xhttp-box` 配置目录和 `/var/lib/xhttp-box` 数据目录。
+配置格式本身没有变化；升级时请复制现有配置并更新启动脚本。本项目不会安装
+`sing-box` 兼容别名。
 
 ## Attribution and license
 
