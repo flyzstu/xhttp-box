@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - dev-next
+    paths-ignore:
+      - '**.md'
 
 permissions:
   contents: write
@@ -93,7 +95,7 @@ jobs:
         run: |
           version=${GITHUB_SHA::7}
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=dev-$version" >> "$GITHUB_OUTPUT"
       - name: Download builds
         uses: actions/download-artifact@v5
         with:
@@ -112,6 +114,7 @@ jobs:
           else
             gh release create "$TAG" dist/* \
               --target "$GITHUB_SHA" \
-              --title "Release $VERSION" \
+              --title "Development build $VERSION" \
+              --prerelease \
               --generate-notes
           fi
