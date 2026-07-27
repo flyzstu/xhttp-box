@@ -1,4 +1,4 @@
-NAME = sing-box
+NAME = xhttp-box
 COMMIT = $(shell git rev-parse --short HEAD)
 TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS_OTHERS)
 
@@ -282,8 +282,8 @@ docs_install:
 	source ./venv/bin/activate && pip install --force-reinstall mkdocs-material=="9.7.2" mkdocs-static-i18n=="1.2.*"
 
 clean:
-	rm -rf bin dist sing-box
-	rm -f $(shell go env GOPATH)/sing-box
+	rm -rf bin dist xhttp-box
+	rm -f $(shell go env GOPATH)/bin/xhttp-box
 
 update:
 	git fetch

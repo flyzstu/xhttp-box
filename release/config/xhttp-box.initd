@@ -1,23 +1,23 @@
 #!/sbin/openrc-run
 
 name=$RC_SVCNAME
-description="sing-box service"
+description="xhttp-box service"
 supervisor="supervise-daemon"
-command="/usr/bin/sing-box"
+command="/usr/bin/xhttp-box"
 extra_commands="checkconfig"
 extra_started_commands="reload"
 
-: ${SINGBOX_CONFIG:=${config:-"/etc/sing-box"}}
+: ${XHTTPBOX_CONFIG:=${config:-"/etc/xhttp-box"}}
 
-if [ -d "$SINGBOX_CONFIG" ]; then
-	_config_opt="-C $SINGBOX_CONFIG"
-elif [ -z "$SINGBOX_CONFIG" ]; then
+if [ -d "$XHTTPBOX_CONFIG" ]; then
+	_config_opt="-C $XHTTPBOX_CONFIG"
+elif [ -z "$XHTTPBOX_CONFIG" ]; then
 	_config_opt=""
 else
-	_config_opt="-c $SINGBOX_CONFIG"
+	_config_opt="-c $XHTTPBOX_CONFIG"
 fi
 
-_workdir=${SINGBOX_WORKDIR:-${workdir:-"/var/lib/sing-box"}}
+_workdir=${XHTTPBOX_WORKDIR:-${workdir:-"/var/lib/xhttp-box"}}
 
 command_args="run --disable-color
 	-D $_workdir
@@ -29,7 +29,7 @@ depend() {
 
 checkconfig() {
 	ebegin "Checking $RC_SVCNAME configuration"
-	sing-box check -D "$_workdir" $_config_opt
+	xhttp-box check -D "$_workdir" $_config_opt
 	eend $?
 }
 

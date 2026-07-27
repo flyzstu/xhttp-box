@@ -1,27 +1,27 @@
-# fish completion for sing-box                             -*- shell-script -*-
+# fish completion for xhttp-box                            -*- shell-script -*-
 
-function __sing_box_debug
+function __xhttp_box_debug
     set -l file "$BASH_COMP_DEBUG_FILE"
     if test -n "$file"
         echo "$argv" >> $file
     end
 end
 
-function __sing_box_perform_completion
-    __sing_box_debug "Starting __sing_box_perform_completion"
+function __xhttp_box_perform_completion
+    __xhttp_box_debug "Starting __xhttp_box_perform_completion"
 
     # Extract all args except the last one
     set -l args (commandline -opc)
     # Extract the last arg and escape it in case it is a space
     set -l lastArg (string escape -- (commandline -ct))
 
-    __sing_box_debug "args: $args"
-    __sing_box_debug "last arg: $lastArg"
+    __xhttp_box_debug "args: $args"
+    __xhttp_box_debug "last arg: $lastArg"
 
     # Disable ActiveHelp which is not supported for fish shell
-    set -l requestComp "SING_BOX_ACTIVE_HELP=0 $args[1] __complete $args[2..-1] $lastArg"
+    set -l requestComp "XHTTP_BOX_ACTIVE_HELP=0 $args[1] __complete $args[2..-1] $lastArg"
 
-    __sing_box_debug "Calling $requestComp"
+    __xhttp_box_debug "Calling $requestComp"
     set -l results (eval $requestComp 2> /dev/null)
 
     # Some programs may output extra empty lines after the directive.
@@ -44,9 +44,9 @@ function __sing_box_perform_completion
     # completions must be prefixed with the flag
     set -l flagPrefix (string match -r -- '-.*=' "$lastArg")
 
-    __sing_box_debug "Comps: $comps"
-    __sing_box_debug "DirectiveLine: $directiveLine"
-    __sing_box_debug "flagPrefix: $flagPrefix"
+    __xhttp_box_debug "Comps: $comps"
+    __xhttp_box_debug "DirectiveLine: $directiveLine"
+    __xhttp_box_debug "flagPrefix: $flagPrefix"
 
     for comp in $comps
         printf "%s%s\n" "$flagPrefix" "$comp"
@@ -55,84 +55,84 @@ function __sing_box_perform_completion
     printf "%s\n" "$directiveLine"
 end
 
-# this function limits calls to __sing_box_perform_completion, by caching the result behind $__sing_box_perform_completion_once_result
-function __sing_box_perform_completion_once
-    __sing_box_debug "Starting __sing_box_perform_completion_once"
+# this function limits calls to __xhttp_box_perform_completion, by caching the result behind $__xhttp_box_perform_completion_once_result
+function __xhttp_box_perform_completion_once
+    __xhttp_box_debug "Starting __xhttp_box_perform_completion_once"
 
-    if test -n "$__sing_box_perform_completion_once_result"
-        __sing_box_debug "Seems like a valid result already exists, skipping __sing_box_perform_completion"
+    if test -n "$__xhttp_box_perform_completion_once_result"
+        __xhttp_box_debug "Seems like a valid result already exists, skipping __xhttp_box_perform_completion"
         return 0
     end
 
-    set --global __sing_box_perform_completion_once_result (__sing_box_perform_completion)
-    if test -z "$__sing_box_perform_completion_once_result"
-        __sing_box_debug "No completions, probably due to a failure"
+    set --global __xhttp_box_perform_completion_once_result (__xhttp_box_perform_completion)
+    if test -z "$__xhttp_box_perform_completion_once_result"
+        __xhttp_box_debug "No completions, probably due to a failure"
         return 1
     end
 
-    __sing_box_debug "Performed completions and set __sing_box_perform_completion_once_result"
+    __xhttp_box_debug "Performed completions and set __xhttp_box_perform_completion_once_result"
     return 0
 end
 
-# this function is used to clear the $__sing_box_perform_completion_once_result variable after completions are run
-function __sing_box_clear_perform_completion_once_result
-    __sing_box_debug ""
-    __sing_box_debug "========= clearing previously set __sing_box_perform_completion_once_result variable =========="
-    set --erase __sing_box_perform_completion_once_result
-    __sing_box_debug "Successfully erased the variable __sing_box_perform_completion_once_result"
+# this function is used to clear the $__xhttp_box_perform_completion_once_result variable after completions are run
+function __xhttp_box_clear_perform_completion_once_result
+    __xhttp_box_debug ""
+    __xhttp_box_debug "========= clearing previously set __xhttp_box_perform_completion_once_result variable =========="
+    set --erase __xhttp_box_perform_completion_once_result
+    __xhttp_box_debug "Successfully erased the variable __xhttp_box_perform_completion_once_result"
 end
 
-function __sing_box_requires_order_preservation
-    __sing_box_debug ""
-    __sing_box_debug "========= checking if order preservation is required =========="
+function __xhttp_box_requires_order_preservation
+    __xhttp_box_debug ""
+    __xhttp_box_debug "========= checking if order preservation is required =========="
 
-    __sing_box_perform_completion_once
-    if test -z "$__sing_box_perform_completion_once_result"
-        __sing_box_debug "Error determining if order preservation is required"
+    __xhttp_box_perform_completion_once
+    if test -z "$__xhttp_box_perform_completion_once_result"
+        __xhttp_box_debug "Error determining if order preservation is required"
         return 1
     end
 
-    set -l directive (string sub --start 2 $__sing_box_perform_completion_once_result[-1])
-    __sing_box_debug "Directive is: $directive"
+    set -l directive (string sub --start 2 $__xhttp_box_perform_completion_once_result[-1])
+    __xhttp_box_debug "Directive is: $directive"
 
     set -l shellCompDirectiveKeepOrder 32
     set -l keeporder (math (math --scale 0 $directive / $shellCompDirectiveKeepOrder) % 2)
-    __sing_box_debug "Keeporder is: $keeporder"
+    __xhttp_box_debug "Keeporder is: $keeporder"
 
     if test $keeporder -ne 0
-        __sing_box_debug "This does require order preservation"
+        __xhttp_box_debug "This does require order preservation"
         return 0
     end
 
-    __sing_box_debug "This doesn't require order preservation"
+    __xhttp_box_debug "This doesn't require order preservation"
     return 1
 end
 
 
 # This function does two things:
-# - Obtain the completions and store them in the global __sing_box_comp_results
+# - Obtain the completions and store them in the global __xhttp_box_comp_results
 # - Return false if file completion should be performed
-function __sing_box_prepare_completions
-    __sing_box_debug ""
-    __sing_box_debug "========= starting completion logic =========="
+function __xhttp_box_prepare_completions
+    __xhttp_box_debug ""
+    __xhttp_box_debug "========= starting completion logic =========="
 
     # Start fresh
-    set --erase __sing_box_comp_results
+    set --erase __xhttp_box_comp_results
 
-    __sing_box_perform_completion_once
-    __sing_box_debug "Completion results: $__sing_box_perform_completion_once_result"
+    __xhttp_box_perform_completion_once
+    __xhttp_box_debug "Completion results: $__xhttp_box_perform_completion_once_result"
 
-    if test -z "$__sing_box_perform_completion_once_result"
-        __sing_box_debug "No completion, probably due to a failure"
+    if test -z "$__xhttp_box_perform_completion_once_result"
+        __xhttp_box_debug "No completion, probably due to a failure"
         # Might as well do file completion, in case it helps
         return 1
     end
 
-    set -l directive (string sub --start 2 $__sing_box_perform_completion_once_result[-1])
-    set --global __sing_box_comp_results $__sing_box_perform_completion_once_result[1..-2]
+    set -l directive (string sub --start 2 $__xhttp_box_perform_completion_once_result[-1])
+    set --global __xhttp_box_comp_results $__xhttp_box_perform_completion_once_result[1..-2]
 
-    __sing_box_debug "Completions are: $__sing_box_comp_results"
-    __sing_box_debug "Directive is: $directive"
+    __xhttp_box_debug "Completions are: $__xhttp_box_comp_results"
+    __xhttp_box_debug "Directive is: $directive"
 
     set -l shellCompDirectiveError 1
     set -l shellCompDirectiveNoSpace 2
@@ -146,7 +146,7 @@ function __sing_box_prepare_completions
 
     set -l compErr (math (math --scale 0 $directive / $shellCompDirectiveError) % 2)
     if test $compErr -eq 1
-        __sing_box_debug "Received error directive: aborting."
+        __xhttp_box_debug "Received error directive: aborting."
         # Might as well do file completion, in case it helps
         return 1
     end
@@ -154,7 +154,7 @@ function __sing_box_prepare_completions
     set -l filefilter (math (math --scale 0 $directive / $shellCompDirectiveFilterFileExt) % 2)
     set -l dirfilter (math (math --scale 0 $directive / $shellCompDirectiveFilterDirs) % 2)
     if test $filefilter -eq 1; or test $dirfilter -eq 1
-        __sing_box_debug "File extension filtering or directory filtering not supported"
+        __xhttp_box_debug "File extension filtering or directory filtering not supported"
         # Do full file completion instead
         return 1
     end
@@ -162,7 +162,7 @@ function __sing_box_prepare_completions
     set -l nospace (math (math --scale 0 $directive / $shellCompDirectiveNoSpace) % 2)
     set -l nofiles (math (math --scale 0 $directive / $shellCompDirectiveNoFileComp) % 2)
 
-    __sing_box_debug "nospace: $nospace, nofiles: $nofiles"
+    __xhttp_box_debug "nospace: $nospace, nofiles: $nofiles"
 
     # If we want to prevent a space, or if file completion is NOT disabled,
     # we need to count the number of valid completions.
@@ -171,22 +171,22 @@ function __sing_box_prepare_completions
     # criteria than the prefix.
     if test $nospace -ne 0; or test $nofiles -eq 0
         set -l prefix (commandline -t | string escape --style=regex)
-        __sing_box_debug "prefix: $prefix"
+        __xhttp_box_debug "prefix: $prefix"
 
-        set -l completions (string match -r -- "^$prefix.*" $__sing_box_comp_results)
-        set --global __sing_box_comp_results $completions
-        __sing_box_debug "Filtered completions are: $__sing_box_comp_results"
+        set -l completions (string match -r -- "^$prefix.*" $__xhttp_box_comp_results)
+        set --global __xhttp_box_comp_results $completions
+        __xhttp_box_debug "Filtered completions are: $__xhttp_box_comp_results"
 
         # Important not to quote the variable for count to work
-        set -l numComps (count $__sing_box_comp_results)
-        __sing_box_debug "numComps: $numComps"
+        set -l numComps (count $__xhttp_box_comp_results)
+        __xhttp_box_debug "numComps: $numComps"
 
         if test $numComps -eq 1; and test $nospace -ne 0
             # We must first split on \t to get rid of the descriptions to be
             # able to check what the actual completion will be.
             # We don't need descriptions anyway since there is only a single
             # real completion which the shell will expand immediately.
-            set -l split (string split --max 1 \t $__sing_box_comp_results[1])
+            set -l split (string split --max 1 \t $__xhttp_box_comp_results[1])
 
             # Fish won't add a space if the completion ends with any
             # of the following characters: @=/:.,
@@ -194,16 +194,16 @@ function __sing_box_prepare_completions
             if not string match -r -q "[@=/:.,]" -- "$lastChar"
                 # In other cases, to support the "nospace" directive we trick the shell
                 # by outputting an extra, longer completion.
-                __sing_box_debug "Adding second completion to perform nospace directive"
-                set --global __sing_box_comp_results $split[1] $split[1].
-                __sing_box_debug "Completions are now: $__sing_box_comp_results"
+                __xhttp_box_debug "Adding second completion to perform nospace directive"
+                set --global __xhttp_box_comp_results $split[1] $split[1].
+                __xhttp_box_debug "Completions are now: $__xhttp_box_comp_results"
             end
         end
 
         if test $numComps -eq 0; and test $nofiles -eq 0
             # To be consistent with bash and zsh, we only trigger file
             # completion when there are no other completions
-            __sing_box_debug "Requesting file completion"
+            __xhttp_box_debug "Requesting file completion"
             return 1
         end
     end
@@ -215,21 +215,21 @@ end
 # so we can properly delete any completions provided by another script.
 # Only do this if the program can be found, or else fish may print some errors; besides,
 # the existing completions will only be loaded if the program can be found.
-if type -q "sing-box"
+if type -q "xhttp-box"
     # The space after the program name is essential to trigger completion for the program
     # and not completion of the program name itself.
     # Also, we use '> /dev/null 2>&1' since '&>' is not supported in older versions of fish.
-    complete --do-complete "sing-box " > /dev/null 2>&1
+    complete --do-complete "xhttp-box " > /dev/null 2>&1
 end
 
 # Remove any pre-existing completions for the program since we will be handling all of them.
-complete -c sing-box -e
+complete -c xhttp-box -e
 
-# this will get called after the two calls below and clear the $__sing_box_perform_completion_once_result global
-complete -c sing-box -n '__sing_box_clear_perform_completion_once_result'
-# The call to __sing_box_prepare_completions will setup __sing_box_comp_results
+# this will get called after the two calls below and clear the $__xhttp_box_perform_completion_once_result global
+complete -c xhttp-box -n '__xhttp_box_clear_perform_completion_once_result'
+# The call to __xhttp_box_prepare_completions will setup __xhttp_box_comp_results
 # which provides the program's completion choices.
 # If this doesn't require order preservation, we don't use the -k flag
-complete -c sing-box -n 'not __sing_box_requires_order_preservation && __sing_box_prepare_completions' -f -a '$__sing_box_comp_results'
+complete -c xhttp-box -n 'not __xhttp_box_requires_order_preservation && __xhttp_box_prepare_completions' -f -a '$__xhttp_box_comp_results'
 # otherwise we use the -k flag
-complete -k -c sing-box -n '__sing_box_requires_order_preservation && __sing_box_prepare_completions' -f -a '$__sing_box_comp_results'
+complete -k -c xhttp-box -n '__xhttp_box_requires_order_preservation && __xhttp_box_prepare_completions' -f -a '$__xhttp_box_comp_results'

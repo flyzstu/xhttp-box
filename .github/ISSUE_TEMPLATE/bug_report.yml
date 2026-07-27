@@ -1,90 +1,81 @@
 name: Bug report
-description: "Report sing-box bug"
+description: Report a reproducible xhttp-box problem
+title: ""
+labels:
+  - bug
 body:
-  - type: dropdown
+  - type: markdown
     attributes:
-      label: Operating system
-      description: Operating system type
-      options:
-        - iOS
-        - macOS
-        - Apple tvOS
-        - Android
-        - Windows
-        - Linux
-        - Others
-    validations:
-      required: true
+      value: |
+        xhttp-box is an independent, unofficial derivative. Report xhttp-box
+        problems here, not to SagerNet or the upstream sing-box maintainers.
+
   - type: input
+    id: version
     attributes:
-      label: System version
-      description: Please provide the operating system version
+      label: xhttp-box version
+      description: Paste the complete output of `xhttp-box version`.
+      placeholder: xhttp-box version ...
     validations:
       required: true
+
   - type: dropdown
+    id: installation
     attributes:
-      label: Installation type
-      description: Please provide the sing-box installation type
+      label: Installation
       options:
-        - Original sing-box Command Line
-        - sing-box for iOS Graphical Client
-        - sing-box for macOS Graphical Client
-        - sing-box for Apple tvOS Graphical Client
-        - sing-box for Android Graphical Client
-        - sing-box for Windows Graphical Client
-        - sing-box for Linux Graphical Client
-        - Third-party graphical clients that advertise themselves as using sing-box (Windows)
-        - Third-party graphical clients that advertise themselves as using sing-box (Android)
-        - Others
+        - GitHub Release archive
+        - Alpine APK
+        - Container image
+        - Built from source
+        - Other
     validations:
       required: true
-  - type: input
-    attributes:
-      description: Graphical client version
-      label: If you are using a graphical client, please provide the version of the client.
+
   - type: textarea
+    id: environment
     attributes:
-      label: Version
-      description: If you are using the original command line program, please provide the output of the `sing-box version` command.
-      render: shell
-  - type: textarea
-    attributes:
-      label: Description
-      description: Please provide a detailed description of the error.
+      label: Environment
+      description: Include the operating system, architecture, and relevant network topology.
     validations:
       required: true
+
   - type: textarea
+    id: description
     attributes:
-      label: Reproduction
-      description: Please provide the steps to reproduce the error, including the configuration files and procedures that can locally (not dependent on the remote server) reproduce the error using the original command line program of sing-box.
+      label: Problem description
+      description: Explain the expected and actual behavior.
     validations:
       required: true
+
   - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Provide the smallest local reproduction you can.
+    validations:
+      required: true
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Configuration
+      description: Remove credentials, private keys, addresses, and other secrets.
+      render: json
+
+  - type: textarea
+    id: logs
     attributes:
       label: Logs
-      description: |-
-        In addition, if you encounter a crash with the graphical client, please also provide crash logs.
-        For Apple platform clients, please check `Settings - View Service Log` for crash logs.
-        For the Android client, please check the `/sdcard/Android/data/io.nekohasekai.sfa/files/stderr.log` file for crash logs.
+      description: Include relevant xhttp-box logs after removing secrets.
       render: shell
+
   - type: checkboxes
-    id: supporter
+    id: confirmation
     attributes:
-      label: Supporter
+      label: Checklist
       options:
-        - label: I am a [sponsor](https://github.com/sponsors/nekohasekai/)
-  - type: checkboxes
-    attributes:
-      label: Integrity requirements
-      description: |-
-        Please check all of the following options to prove that you have read and understood the requirements, otherwise this issue will be closed.
-        Sing-box is not a project aimed to please users who can't make any meaningful contributions and gain unethical influence. If you deceive here to deliberately waste the time of the developers, you will be permanently blocked.
-      options:
-        - label: I confirm that I have read the documentation, understand the meaning of all the configuration items I wrote, and did not pile up seemingly useful options or default values.
+        - label: I confirmed this issue affects xhttp-box and will not report it to the upstream project.
           required: true
-        - label: I confirm that I have provided the server and client configuration files and process that can be reproduced locally, instead of a complicated client configuration file that has been stripped of sensitive data.
-          required: true
-        - label: I confirm that I have provided the simplest configuration that can be used to reproduce the error I reported, instead of depending on remote servers, TUN, graphical interface clients, or other closed-source software.
-          required: true
-        - label: I confirm that I have provided the complete configuration files and logs, rather than just providing parts I think are useful out of confidence in my own intelligence.
+        - label: I removed credentials and other sensitive information.
           required: true

@@ -40,7 +40,7 @@ jobs:
         run: |
           set -xeuo pipefail
           mkdir -p dist
-          go build -v -trimpath -o "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}" \
+          go build -v -trimpath -o "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}" \
             -tags "$(cat release/DEFAULT_BUILD_TAGS_OTHERS)" \
             -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=${{ steps.version.outputs.version }}' $(cat release/LDFLAGS) -s -w -buildid=" \
             ./cmd/sing-box
@@ -62,25 +62,26 @@ jobs:
           .github/build_alpine_apk.sh \
             x86_64 \
             "$apk_version" \
-            "dist/sing-box" \
-            "dist/sing-box-${{ steps.version.outputs.version }}-linux-x86_64.apk"
+            "dist/xhttp-box" \
+            "dist/xhttp-box-${{ steps.version.outputs.version }}-linux-x86_64.apk"
       - name: Archive
         run: |
           set -xeuo pipefail
-          name="sing-box-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}"
+          name="xhttp-box-${{ steps.version.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}"
           mkdir -p "dist/$name"
           cp LICENSE "dist/$name/"
-          cp "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}" "dist/$name/"
+          cp NOTICE.md "dist/$name/"
+          cp "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}" "dist/$name/"
           if [[ "${{ matrix.extension }}" == "zip" ]]; then
             (cd dist && zip -qr "$name.zip" "$name")
           else
             tar -C dist -czf "dist/$name.tar.gz" "$name"
           fi
-          rm -rf "dist/$name" "dist/sing-box${{ matrix.os == 'windows' && '.exe' || '' }}"
+          rm -rf "dist/$name" "dist/xhttp-box${{ matrix.os == 'windows' && '.exe' || '' }}"
       - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: sing-box-${{ matrix.os }}-${{ matrix.arch }}
+          name: xhttp-box-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 1
