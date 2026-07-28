@@ -25,6 +25,8 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      release_title: ${{ steps.version.outputs.release_title }}
       target_sha: ${{ steps.target.outputs.target_sha }}
     steps:
       - name: Checkout dev-next
@@ -44,21 +46,26 @@ jobs:
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_title=xhttp-box v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Reject an existing tag or release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG: ${{ steps.version.outputs.release_tag }}
         run: |
           set -euo pipefail
-          if git ls-remote --exit-code --tags origin "refs/tags/$VERSION" >/dev/null 2>&1; then
-            echo "Tag $VERSION already exists." >&2
-            exit 1
-          fi
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION already exists." >&2
-            exit 1
-          fi
+          for tag in "$RELEASE_TAG" "$VERSION"; do
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+              echo "Tag $tag already exists." >&2
+              exit 1
+            fi
+            if gh release view "$tag" >/dev/null 2>&1; then
+              echo "Release $tag already exists." >&2
+              exit 1
+            fi
+          done
 
       - name: Record release target
         id: target
@@ -89,6 +96,7 @@ jobs:
       matrix:
         include:
           - { os: linux, arch: amd64, extension: tar.gz }
+          - { os: android, arch: arm64, extension: tar.gz }
           - { os: windows, arch: amd64, extension: zip }
     steps:
       - name: Checkout release target
@@ -160,7 +168,7 @@ jobs:
       - name: Upload release assets
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.os }}-${{ matrix.arch }}
+          name: release-${{ needs.validate.outputs.version }}-${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 1
@@ -180,6 +188,29 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Validate release asset names
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(dist/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets were downloaded." >&2
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            name=$(basename "$asset")
+            if [[ "$name" != *"$VERSION"* ]]; then
+              echo "Release asset does not include version $VERSION: $name" >&2
+              exit 1
+            fi
+            if [[ "$name" == *sing-box* ]]; then
+              echo "Release asset uses upstream project name: $name" >&2
+              exit 1
+            fi
+          done
+
       - name: Generate checksums
         run: |
           set -euo pipefail
@@ -197,6 +228,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.validate.outputs.version }}
+          RELEASE_TAG: ${{ needs.validate.outputs.release_tag }}
+          RELEASE_TITLE: ${{ needs.validate.outputs.release_title }}
           TARGET_SHA: ${{ needs.validate.outputs.target_sha }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
@@ -208,13 +241,13 @@ jobs:
             release_flags+=(--latest)
           fi
 
-          gh release create "$VERSION" dist/* \
+          gh release create "$RELEASE_TAG" dist/* \
             --target "$TARGET_SHA" \
-            --title "$VERSION" \
+            --title "$RELEASE_TITLE" \
             --generate-notes \
             "${release_flags[@]}"
 
-          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/$VERSION" \
+          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/$RELEASE_TAG" \
             >> "$GITHUB_STEP_SUMMARY"
 
   container:
