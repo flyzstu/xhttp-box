@@ -5,6 +5,7 @@ LABEL org.opencontainers.image.source="https://github.com/flyzstu/xhttp-box"
 COPY . /go/src/github.com/sagernet/sing-box
 WORKDIR /go/src/github.com/sagernet/sing-box
 ARG TARGETOS TARGETARCH
+ARG VERSION=unknown
 ARG GOPROXY=""
 ENV GOPROXY ${GOPROXY}
 ENV CGO_ENABLED=0
@@ -12,8 +13,6 @@ ENV GOOS=$TARGETOS
 ENV GOARCH=$TARGETARCH
 RUN set -ex \
     && apk add git build-base \
-    && export COMMIT=$(git rev-parse --short HEAD) \
-    && export VERSION=$(go run ./cmd/internal/read_tag) \
     && export TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS) \
     && export LDFLAGS_SHARED=$(cat release/LDFLAGS) \
     && go build -v -trimpath -tags "$TAGS" \
