@@ -2,6 +2,14 @@
 icon: material/alert-decagram
 ---
 
+#### 1.14.0-beta.3
+
+* Fixes and improvements
+
+#### 1.13.15
+
+* Fixes and improvements
+
 #### 1.14.0-beta.2
 
 * Add [JSON Schema](/configuration/schema/) support **1**
