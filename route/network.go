@@ -61,6 +61,20 @@ type NetworkManager struct {
 
 func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options option.RouteOptions, dnsOptions option.DNSOptions) (*NetworkManager, error) {
 	defaultDomainResolver := common.PtrValueOrDefault(options.DefaultDomainResolver)
+	inboundDomainResolver := make(map[string]adapter.DomainResolverOptions, len(options.InboundDomainResolver))
+	for inboundTag, resolver := range options.InboundDomainResolver {
+		inboundDomainResolver[inboundTag] = adapter.DomainResolverOptions{
+			Server: resolver.Server,
+			QueryOptions: adapter.DNSQueryOptions{
+				Strategy:               C.DomainStrategy(resolver.Strategy),
+				Timeout:                time.Duration(resolver.Timeout),
+				DisableCache:           resolver.DisableCache,
+				DisableOptimisticCache: resolver.DisableOptimisticCache,
+				RewriteTTL:             resolver.RewriteTTL,
+				ClientSubnet:           resolver.ClientSubnet.Build(netip.Prefix{}),
+			},
+		}
+	}
 	if options.AutoDetectInterface && !(C.IsLinux || C.IsDarwin || C.IsWindows) {
 		return nil, E.New("`auto_detect_interface` is only supported on Linux, Windows and macOS")
 	} else if options.OverrideAndroidVPN && !C.IsAndroid {
@@ -76,9 +90,10 @@ func NewNetworkManager(ctx context.Context, logger logger.ContextLogger, options
 		interfaceFinder:     control.NewDefaultInterfaceFinder(),
 		autoDetectInterface: options.AutoDetectInterface,
 		defaultOptions: adapter.NetworkOptions{
-			BindInterface:  options.DefaultInterface,
-			RoutingMark:    uint32(options.DefaultMark),
-			DomainResolver: defaultDomainResolver.Server,
+			BindInterface:         options.DefaultInterface,
+			RoutingMark:           uint32(options.DefaultMark),
+			DomainResolver:        defaultDomainResolver.Server,
+			InboundDomainResolver: inboundDomainResolver,
 			DomainResolveOptions: adapter.DNSQueryOptions{
 				Strategy:               C.DomainStrategy(defaultDomainResolver.Strategy),
 				Timeout:                time.Duration(defaultDomainResolver.Timeout),

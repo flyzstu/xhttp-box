@@ -13,6 +13,7 @@ icon: material/alert-decagram
 !!! quote "Changes in sing-box 1.12.0"
 
     :material-plus: [default_domain_resolver](#default_domain_resolver)  
+    :material-plus: [inbound_domain_resolver](#inbound_domain_resolver)
     :material-note-remove: [geoip](#geoip)  
     :material-note-remove: [geosite](#geosite)
 
@@ -46,6 +47,7 @@ icon: material/alert-decagram
     "dhcp_lease_files": [],
     "default_http_client": "",
     "default_domain_resolver": "", // or {}
+    "inbound_domain_resolver": {},
     "default_network_strategy": "",
     "default_network_type": [],
     "default_fallback_network_type": [],
@@ -164,6 +166,31 @@ If empty and `http_clients` is defined, the first HTTP client is used.
 See [Dial Fields](/configuration/shared/dial/#domain_resolver) for details.
 
 Can be overridden by `outbound.domain_resolver`.
+
+#### inbound_domain_resolver
+
+Selects a DNS resolver for domain dialing by inbound tag. Keys are inbound tags and values use the same format as
+[`default_domain_resolver`](#default_domain_resolver).
+
+```json
+{
+  "route": {
+    "inbound_domain_resolver": {
+      "vless-ipv6-in": {
+        "server": "dns-ipv6",
+        "strategy": "prefer_ipv6"
+      },
+      "vless-ipv4-in": {
+        "server": "dns-ipv4",
+        "strategy": "ipv4_only"
+      }
+    }
+  }
+}
+```
+
+Resolver precedence is `outbound.domain_resolver`, `inbound_domain_resolver`, then
+`default_domain_resolver`. The default resolver is used when no inbound tag matches.
 
 #### default_network_strategy
 

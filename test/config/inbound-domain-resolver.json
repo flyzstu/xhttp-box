@@ -1,0 +1,56 @@
+{
+  "log": {
+    "level": "debug"
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "dns-ipv6",
+        "server": "2606:4700:4700::1111"
+      },
+      {
+        "type": "udp",
+        "tag": "dns-ipv4",
+        "server": "1.1.1.1"
+      }
+    ]
+  },
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "ipv6-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1080
+    },
+    {
+      "type": "socks",
+      "tag": "ipv4-in",
+      "listen": "127.0.0.1",
+      "listen_port": 1081
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "final": "direct",
+    "default_domain_resolver": {
+      "server": "dns-ipv4",
+      "strategy": "ipv4_only"
+    },
+    "inbound_domain_resolver": {
+      "ipv6-in": {
+        "server": "dns-ipv6",
+        "strategy": "prefer_ipv6"
+      },
+      "ipv4-in": {
+        "server": "dns-ipv4",
+        "strategy": "ipv4_only"
+      }
+    }
+  }
+}

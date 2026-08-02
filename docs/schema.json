@@ -14237,6 +14237,12 @@
         "default_domain_resolver": {
           "$ref": "#/$defs/DomainResolver"
         },
+        "inbound_domain_resolver": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/DomainResolver"
+          }
+        },
         "default_network_strategy": {
           "type": "string",
           "enum": [
