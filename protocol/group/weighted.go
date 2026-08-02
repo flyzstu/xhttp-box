@@ -3,6 +3,7 @@ package group
 import (
 	"context"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -339,12 +340,7 @@ func (w *Weighted) selectOutbound(network string) (adapter.Outbound, *weightedMe
 }
 
 func containsNetwork(networks []string, network string) bool {
-	for _, candidate := range networks {
-		if candidate == network {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(networks, network)
 }
 
 func (w *Weighted) recordPassiveResult(member *weightedMember, err error) {

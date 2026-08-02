@@ -9,6 +9,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/group"
+
 	"github.com/stretchr/testify/require"
 )
 

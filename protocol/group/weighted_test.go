@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+
 	"github.com/stretchr/testify/require"
 )
 
