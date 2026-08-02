@@ -35,20 +35,14 @@ type NetworkManager interface {
 }
 
 type NetworkOptions struct {
-	BindInterface         string
-	RoutingMark           uint32
-	DomainResolver        string
-	DomainResolveOptions  DNSQueryOptions
-	InboundDomainResolver map[string]DomainResolverOptions
-	NetworkStrategy       *C.NetworkStrategy
-	NetworkType           []C.InterfaceType
-	FallbackNetworkType   []C.InterfaceType
-	FallbackDelay         time.Duration
-}
-
-type DomainResolverOptions struct {
-	Server       string
-	QueryOptions DNSQueryOptions
+	BindInterface        string
+	RoutingMark          uint32
+	DomainResolver       string
+	DomainResolveOptions DNSQueryOptions
+	NetworkStrategy      *C.NetworkStrategy
+	NetworkType          []C.InterfaceType
+	FallbackNetworkType  []C.InterfaceType
+	FallbackDelay        time.Duration
 }
 
 type InterfaceUpdateListener interface {

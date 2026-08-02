@@ -72,7 +72,6 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 		var (
 			server               string
 			dnsQueryOptions      adapter.DNSQueryOptions
-			inboundResolver      map[string]adapter.DomainResolverOptions
 			resolveFallbackDelay time.Duration
 		)
 		if dialOptions.DomainResolver != nil && dialOptions.DomainResolver.Server != "" {
@@ -126,7 +125,6 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 					deprecated.Report(options.Context, deprecated.OptionMissingDomainResolver)
 				}
 			}
-			inboundResolver = defaultOptions.InboundDomainResolver
 			if
 			//nolint:staticcheck
 			dialOptions.DomainStrategy != option.DomainStrategy(C.DomainStrategyAsIS) {
@@ -141,7 +139,6 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			dialOptions.Detour == "" && !dialOptions.TCPFastOpen,
 			server,
 			dnsQueryOptions,
-			inboundResolver,
 			resolveFallbackDelay,
 		)
 	}

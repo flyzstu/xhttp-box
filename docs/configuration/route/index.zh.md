@@ -13,7 +13,6 @@ icon: material/alert-decagram
 !!! quote "sing-box 1.12.0 中的更改"
 
     :material-plus: [default_domain_resolver](#default_domain_resolver)  
-    :material-plus: [inbound_domain_resolver](#inbound_domain_resolver)
     :material-note-remove: [geoip](#geoip)  
     :material-note-remove: [geosite](#geosite)
 
@@ -48,8 +47,6 @@ icon: material/alert-decagram
     "find_neighbor": false,
     "dhcp_lease_files": [],
     "default_http_client": "",
-    "default_domain_resolver": "", // 或 {}
-    "inbound_domain_resolver": {},
     "default_network_strategy": "",
     "default_fallback_delay": ""
   }
@@ -166,31 +163,6 @@ icon: material/alert-decagram
 详情参阅 [拨号字段](/zh/configuration/shared/dial/#domain_resolver)。
 
 可以被 `outbound.domain_resolver` 覆盖。
-
-#### inbound_domain_resolver
-
-按入站标签为域名拨号选择不同的 DNS 解析器。键为入站标签，值与
-[`default_domain_resolver`](#default_domain_resolver) 格式相同。
-
-```json
-{
-  "route": {
-    "inbound_domain_resolver": {
-      "vless-ipv6-in": {
-        "server": "dns-ipv6",
-        "strategy": "prefer_ipv6"
-      },
-      "vless-ipv4-in": {
-        "server": "dns-ipv4",
-        "strategy": "ipv4_only"
-      }
-    }
-  }
-}
-```
-
-解析器优先级为：`outbound.domain_resolver`、`inbound_domain_resolver`、
-`default_domain_resolver`。未命中入站标签时使用默认解析器。
 
 #### network_strategy
 
