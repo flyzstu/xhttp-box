@@ -10805,6 +10805,9 @@
             },
             "min_idle_session": {
               "type": "integer"
+            },
+            "client_metadata": {
+              "type": "string"
             }
           },
           "required": [
@@ -11607,6 +11610,9 @@
               ]
             },
             "brutal_debug": {
+              "type": "boolean"
+            },
+            "disable_chrome_parrot": {
               "type": "boolean"
             },
             "realm": {
@@ -13795,47 +13801,6 @@
             "type"
           ],
           "additionalProperties": false
-        },
-        {
-          "type": "object",
-          "properties": {
-            "type": {
-              "const": "weighted"
-            },
-            "tag": {
-              "type": "string"
-            },
-            "outbounds": {
-              "type": "array",
-              "items": {
-                "$ref": "#/$defs/WeightedOutboundItem"
-              }
-            },
-            "strategy": {
-              "type": "string",
-              "enum": [
-                "smooth_wrr"
-              ]
-            },
-            "health_check": {
-              "$ref": "#/$defs/WeightedHealthCheckOptions"
-            },
-            "all_unhealthy": {
-              "type": "string",
-              "enum": [
-                "block",
-                "fallback"
-              ]
-            },
-            "fallback": {
-              "type": "string",
-              "x-tag-reference": "outbound"
-            }
-          },
-          "required": [
-            "type"
-          ],
-          "additionalProperties": false
         }
       ]
     },
@@ -14236,12 +14201,6 @@
         },
         "default_domain_resolver": {
           "$ref": "#/$defs/DomainResolver"
-        },
-        "inbound_domain_resolver": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/$defs/DomainResolver"
-          }
         },
         "default_network_strategy": {
           "type": "string",
@@ -17306,52 +17265,6 @@
         },
         "alterId": {
           "type": "integer"
-        }
-      },
-      "additionalProperties": false
-    },
-    "WeightedHealthCheckOptions": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
-        },
-        "url": {
-          "type": "string"
-        },
-        "interval": {
-          "$ref": "#/$defs/Duration"
-        },
-        "timeout": {
-          "$ref": "#/$defs/Duration"
-        },
-        "failure_threshold": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "success_threshold": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
-        },
-        "cooldown": {
-          "$ref": "#/$defs/Duration"
-        }
-      },
-      "additionalProperties": false
-    },
-    "WeightedOutboundItem": {
-      "type": "object",
-      "properties": {
-        "tag": {
-          "type": "string",
-          "x-tag-reference": "outbound"
-        },
-        "weight": {
-          "type": "integer",
-          "minimum": 0,
-          "maximum": 4294967295
         }
       },
       "additionalProperties": false
