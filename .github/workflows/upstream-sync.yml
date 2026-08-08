@@ -207,26 +207,46 @@ jobs:
             echo "Missing OpenRouter API key. Set the OPENAI_API_KEY secret." >&2
             exit 1
           fi
-          conflicted_files=$(git diff --name-only --diff-filter=U || true)
-          if [[ -z "$conflicted_files" ]]; then
-            # No textual conflicts; Aider still fixes precheck (build/test) failures.
-            conflicted_files=$(git diff --name-only --diff-filter=ACM)
+          # Batch conflicts into small groups so the prompt stays under the
+          # free OpenRouter router's 200k context window. Aider resolves each
+          # batch; the loop stops when no conflict count improves.
+          batch_size=5
+          iterations=0
+          while :; do
+            mapfile -t conflicted_files < <(git diff --name-only --diff-filter=U || true)
+            if (( ${#conflicted_files[@]} == 0 )); then
+              break
+            fi
+            batch=("${conflicted_files[@]:0:$batch_size}")
+            echo "Aider iteration $((iterations + 1)): ${batch[*]}" >> "$GITHUB_STEP_SUMMARY"
+            aider \
+              --yes-always \
+              --no-git \
+              --no-repo-map \
+              --no-auto-commits \
+              --no-attribute-commit-message-author \
+              --no-attribute-commit-message-committer \
+              --message "$AIDER_MESSAGE" \
+              "${batch[@]}"
+            # Aider runs with --no-git and only edits the working tree; stage
+            # the batch so resolved conflicts leave the unmerged set.
+            git add "${batch[@]}" || true
+            iterations=$((iterations + 1))
+            mapfile -t remaining < <(git diff --name-only --diff-filter=U || true)
+            if (( ${#remaining[@]} == 0 )); then
+              break
+            fi
+            # Stop if Aider made no progress or hit the safety cap.
+            if [[ "${remaining[*]}" == "${conflicted_files[*]}" ]] || (( iterations >= 10 )); then
+              break
+            fi
+          done
+          mapfile -t remaining < <(git diff --name-only --diff-filter=U || true)
+          if (( ${#remaining[@]} != 0 )); then
+            echo "Aider could not resolve:" >&2
+            printf '%s\n' "${remaining[@]}" >&2
+            exit 1
           fi
-          if [[ -z "$conflicted_files" ]]; then
-            echo "Nothing for Aider to fix." >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          echo "Files handed to Aider:" >> "$GITHUB_STEP_SUMMARY"
-          echo "$conflicted_files" >> "$GITHUB_STEP_SUMMARY"
-          # shellcheck disable=SC2086
-          aider \
-            --yes-always \
-            --no-git \
-            --no-auto-commits \
-            --no-attribute-commit-message-author \
-            --no-attribute-commit-message-committer \
-            --message "$AIDER_MESSAGE" \
-            $conflicted_files
 
       - name: Commit Aider adaptation
         if: steps.aider.outcome == 'success'
