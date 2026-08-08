@@ -25,7 +25,7 @@ import (
 	sHTTP "github.com/sagernet/sing/protocol/http"
 
 	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"golang.org/x/net/http2/h2c" //nolint:staticcheck
 )
 
 var _ adapter.V2RayServerTransport = (*Server)(nil)
@@ -57,7 +57,7 @@ func NewServer(ctx context.Context, logger logger.ContextLogger, options option.
 		}
 	}
 	server := &Server{ctx: ctx, logger: logger, tlsConfig: tlsConfig, handler: handler, config: config, sessionTimeout: 30 * time.Second}
-	handlerWithH2C := h2c.NewHandler(server, &http2.Server{})
+	handlerWithH2C := h2c.NewHandler(server, &http2.Server{}) //nolint:staticcheck
 	server.httpServer = &http.Server{
 		Handler:           handlerWithH2C,
 		ReadHeaderTimeout: C.TCPTimeout,

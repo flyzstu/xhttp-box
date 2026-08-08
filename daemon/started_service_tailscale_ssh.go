@@ -211,9 +211,7 @@ func (s *StartedService) StartTailscaleSSHSession(
 		Message: &TailscaleSSHServerMessage_Ready{Ready: &TailscaleSSHReady{}},
 	})
 
-	workersWg.Add(1)
-	go func() {
-		defer workersWg.Done()
+	workersWg.Go(func() {
 		for {
 			msg, recvErr := server.Recv()
 			if recvErr == io.EOF {
@@ -243,7 +241,7 @@ func (s *StartedService) StartTailscaleSSHSession(
 				}))
 			}
 		}
-	}()
+	})
 
 	pumpReader := func(reader io.Reader) {
 		defer workersWg.Done()
@@ -266,9 +264,7 @@ func (s *StartedService) StartTailscaleSSHSession(
 	workersWg.Add(1)
 	go pumpReader(stderr)
 
-	workersWg.Add(1)
-	go func() {
-		defer workersWg.Done()
+	workersWg.Go(func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for {
@@ -283,11 +279,9 @@ func (s *StartedService) StartTailscaleSSHSession(
 				}
 			}
 		}
-	}()
+	})
 
-	workersWg.Add(1)
-	go func() {
-		defer workersWg.Done()
+	workersWg.Go(func() {
 		waitErr := sshSession.Wait()
 		exitMessage := &TailscaleSSHExit{}
 		switch waitErrTyped := waitErr.(type) {
@@ -302,7 +296,7 @@ func (s *StartedService) StartTailscaleSSHSession(
 			Message: &TailscaleSSHServerMessage_Exit{Exit: exitMessage},
 		})
 		cancel()
-	}()
+	})
 
 	go func() {
 		<-sessionCtx.Done()

@@ -86,16 +86,14 @@ func TestWeightedConcurrentDistribution(t *testing.T) {
 	var countsAccess sync.Mutex
 	var waitGroup sync.WaitGroup
 	for range 32 {
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			for range 1000 {
 				_, member := weighted.selectOutbound(N.NetworkTCP)
 				countsAccess.Lock()
 				counts[member.tag]++
 				countsAccess.Unlock()
 			}
-		}()
+		})
 	}
 	waitGroup.Wait()
 	require.Equal(t, map[string]int{"a": 24000, "b": 8000}, counts)
