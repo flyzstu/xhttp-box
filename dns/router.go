@@ -288,10 +288,18 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 	if ruleIndex != -1 {
 		currentRuleIndex = ruleIndex + 1
 	}
+	domainHost := metadata.DomainHost()
 	for ; currentRuleIndex < len(rules); currentRuleIndex++ {
 		currentRule := rules[currentRuleIndex]
 		if currentRule.WithAddressLimit() && !isAddressQuery {
 			continue
+		}
+		if domainHost == "" {
+			if domainLimitedRule, isDomainLimited := currentRule.(interface {
+				RequireDomain() bool
+			}); isDomainLimited && domainLimitedRule.RequireDomain() {
+				continue
+			}
 		}
 		metadata.ResetRuleCache()
 		metadata.DestinationAddressMatchFromResponse = false

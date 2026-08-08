@@ -389,6 +389,16 @@ func (r *DefaultDNSRule) WithAddressLimit() bool {
 	return r.ruleSetItem != nil && r.ruleSetItem.ContainsDestinationIPCIDRRule()
 }
 
+// RequireDomain reports whether the rule can only match when the query
+// carries a domain. Rules with an invert modifier are excluded, since they
+// match when their domain items do not match.
+func (r *DefaultDNSRule) RequireDomain() bool {
+	if r.invert {
+		return false
+	}
+	return len(r.destinationAddressItems) > 0
+}
+
 func (r *DefaultDNSRule) Match(metadata *adapter.InboundContext) bool {
 	return r.matchForMatch(metadata)
 }
