@@ -174,6 +174,29 @@ jobs:
           steps.precheck.outcome == 'failure')
         run: pip install aider-chat
 
+      - name: Verify API key
+        if: >-
+          steps.upstream.outputs.needed == 'true' &&
+          (steps.merge.outputs.conflicts == 'true' ||
+          steps.precheck.outcome == 'failure')
+        env:
+          API_BASE: ${{
+            secrets.OPENAI_API_BASE ||
+            'https://inference-api.nousresearch.com/v1' }}
+          API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          set -euo pipefail
+          response=$(curl -s --max-time 15 -o /tmp/api_resp.json -w "%{http_code}" \
+            -X POST "$API_BASE/chat/completions" \
+            -H "Authorization: Bearer ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d '{"model":"stepfun/step-3.7-flash:free","messages":[{"role":"user","content":"ping"}],"max_tokens":1}')
+          echo "API status: $response"
+          if [[ "$response" != "200" ]]; then
+            echo "API key rejected: $(cat /tmp/api_resp.json | head -c 300)" >&2
+            exit 1
+          fi
+
       - name: Ask Aider to resolve conflicts or compatibility failures
         id: aider
         if: >-
@@ -207,9 +230,9 @@ jobs:
             echo "Missing API key. Set the OPENAI_API_KEY secret." >&2
             exit 1
           fi
-          # Batch conflicts into small groups so the prompt stays under the
-          # free OpenRouter router's 200k context window. Aider resolves each
-          # batch; the loop stops when no conflict count improves.
+          # Batch conflicts into small groups so the prompt stays within the
+          # model's context window. Aider resolves each batch; the loop stops
+          # when no conflict count improves.
           batch_size=5
           iterations=0
           while :; do
@@ -219,7 +242,7 @@ jobs:
             fi
             batch=("${conflicted_files[@]:0:$batch_size}")
             echo "Aider iteration $((iterations + 1)): ${batch[*]}" >> "$GITHUB_STEP_SUMMARY"
-            aider \
+            timeout 600 aider \
               --yes-always \
               --no-git \
               --map-tokens 0 \
