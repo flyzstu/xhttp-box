@@ -184,7 +184,7 @@ jobs:
           AIDER_OPENAI_API_BASE: ${{
             secrets.OPENAI_API_BASE ||
             'https://openrouter.ai/api/v1' }}
-          AIDER_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AIDER_MODEL: ${{
             secrets.AIDER_MODEL ||
             'openrouter/free' }}
@@ -203,8 +203,8 @@ jobs:
             and run focused tests when useful.
         run: |
           set -euo pipefail
-          if [[ -z "${AIDER_OPENAI_API_KEY:-}" ]]; then
-            echo "Missing Aider API key. Set the OPENAI_API_KEY secret." >&2
+          if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
+            echo "Missing OpenRouter API key. Set the OPENAI_API_KEY secret." >&2
             exit 1
           fi
           conflicted_files=$(git diff --name-only --diff-filter=U || true)
