@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/sagernet/sing-box/common/tlsspoof"
@@ -108,6 +109,26 @@ type InboundContext struct {
 	DestinationPortMatch         bool
 	DidMatch                     bool
 	IgnoreDestinationIPCIDRMatch bool
+
+	// query-level domain cache
+
+	domainHostCached    string
+	domainHostCachedFor string
+}
+
+// DomainHost returns the lowercased query domain, caching the result on the
+// metadata so rule items sharing the same query do not recompute it.
+func (c *InboundContext) DomainHost() string {
+	rawHost := c.Domain
+	if rawHost == "" {
+		rawHost = c.Destination.Fqdn
+	}
+	if c.domainHostCachedFor == rawHost {
+		return c.domainHostCached
+	}
+	c.domainHostCachedFor = rawHost
+	c.domainHostCached = strings.ToLower(rawHost)
+	return c.domainHostCached
 }
 
 func (c *InboundContext) ResetRuleCache() {
