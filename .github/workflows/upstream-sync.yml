@@ -7,9 +7,6 @@ on:
         description: Optional upstream tag (for example v1.14.0-alpha.50); empty selects the latest
         required: false
         type: string
-  schedule:
-    - cron: '43 4 * * *'
-      timezone: Asia/Shanghai
 
 concurrency:
   group: upstream-release-sync
