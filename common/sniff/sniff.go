@@ -10,7 +10,6 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 )
@@ -44,6 +43,12 @@ func PeekStream(ctx context.Context, metadata *adapter.InboundContext, conn net.
 	}
 	deadline := time.Now().Add(timeout)
 	var sniffError error
+	readers := make([]io.Reader, len(buffers)+1)
+	for i, it := range buffers {
+		readers[i] = bytes.NewReader(it.Bytes())
+	}
+	lastReader := bytes.NewReader(nil)
+	readers[len(buffers)] = lastReader
 	for i := 0; ; i++ {
 		err := conn.SetReadDeadline(deadline)
 		if err != nil {
@@ -57,11 +62,10 @@ func PeekStream(ctx context.Context, metadata *adapter.InboundContext, conn net.
 			}
 			return E.Cause(err, "read payload")
 		}
+		lastReader.Reset(buffer.Bytes())
 		sniffError = nil
 		for _, sniffer := range sniffers {
-			reader := io.MultiReader(common.Map(append(buffers, buffer), func(it *buf.Buffer) io.Reader {
-				return bytes.NewReader(it.Bytes())
-			})...)
+			reader := io.MultiReader(readers...)
 			err = sniffer(ctx, metadata, reader)
 			if err == nil {
 				return nil
