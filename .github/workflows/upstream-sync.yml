@@ -7,11 +7,6 @@ on:
         description: Optional upstream tag (for example v1.14.0-alpha.50); empty selects the latest
         required: false
         type: string
-      copilot_smoke_test:
-        description: Only verify that GITHUB_TOKEN can make a Copilot request
-        required: false
-        default: false
-        type: boolean
   schedule:
     - cron: '43 4 * * *'
       timezone: Asia/Shanghai
@@ -21,43 +16,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  copilot-smoke-test:
-    name: Verify Copilot authentication
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.copilot_smoke_test }}
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      copilot-requests: write
-    steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-
-      - name: Install Copilot CLI
-        run: npm install --global @github/copilot
-
-      - name: Make a minimal Copilot request
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          response=$(copilot -s --no-ask-user -p 'Reply with exactly COPILOT_OK and nothing else.')
-          if [[ "$response" != "COPILOT_OK" ]]; then
-            echo "Unexpected Copilot response: $response" >&2
-            exit 1
-          fi
-          echo "Copilot accepted the workflow GITHUB_TOKEN." >> "$GITHUB_STEP_SUMMARY"
-
   sync:
     name: Prepare upstream sync pull request
-    if: ${{ !inputs.copilot_smoke_test }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
       contents: write
       pull-requests: write
-      copilot-requests: write
     steps:
       - name: Checkout dev-next
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
@@ -174,7 +139,7 @@ jobs:
           fi
           echo "conflicts=true" >> "$GITHUB_OUTPUT"
 
-      - name: Test clean merge before using Copilot
+      - name: Test clean merge before using Aider
         id: precheck
         if: >-
           steps.upstream.outputs.needed == 'true' &&
@@ -193,56 +158,78 @@ jobs:
             -ldflags "$(cat release/LDFLAGS)" \
             ./cmd/sing-box
 
-      - name: Setup Node.js for Copilot
+      - name: Setup Python for Aider
         if: >-
           steps.upstream.outputs.needed == 'true' &&
           (steps.merge.outputs.conflicts == 'true' ||
           steps.precheck.outcome == 'failure')
-        uses: actions/setup-node@v4
+        uses: actions/setup-python@v5
         with:
-          node-version: '24'
+          python-version: '3.12'
 
-      - name: Install Copilot CLI
+      - name: Install Aider
         if: >-
           steps.upstream.outputs.needed == 'true' &&
           (steps.merge.outputs.conflicts == 'true' ||
           steps.precheck.outcome == 'failure')
-        run: npm install --global @github/copilot
+        run: pip install aider-chat
 
-      - name: Ask Copilot to resolve conflicts or compatibility failures
-        id: copilot
+      - name: Ask Aider to resolve conflicts or compatibility failures
+        id: aider
         if: >-
           steps.upstream.outputs.needed == 'true' &&
           (steps.merge.outputs.conflicts == 'true' ||
           steps.precheck.outcome == 'failure')
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          AIDER_OPENAI_API_BASE: ${{
+            secrets.OPENAI_API_BASE ||
+            'https://openrouter.ai/api/v1' }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AIDER_MODEL: ${{
+            secrets.AIDER_MODEL ||
+            'openrouter/free' }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
+          AIDER_MESSAGE: >-
+            Adapt xhttp-box to the in-progress merge of SagerNet/sing-box
+            release ${{ steps.upstream.outputs.tag }}. Resolve every Git
+            conflict and fix any XHTTP test or build failures. Preserve the
+            independent xhttp-box README, release automation, and all
+            project-specific XHTTP implementation, protocol options, Xray
+            interoperability, REALITY/uTLS, HTTP/3, lifecycle, and XMUX tests.
+            Prefer upstream changes outside project-specific XHTTP code. Make
+            the smallest necessary compatibility changes. Do not abort the
+            merge, create commits, push, open pull requests, or modify
+            unrelated behavior. Leave all resolved changes in the working tree
+            and run focused tests when useful.
         run: |
           set -euo pipefail
-          copilot -p "
-          Adapt xhttp-box to the in-progress merge of SagerNet/sing-box
-          release ${UPSTREAM_TAG}.
+          if [[ -z "${AIDER_OPENAI_API_KEY:-}" ]]; then
+            echo "Missing Aider API key. Set the OPENAI_API_KEY secret." >&2
+            exit 1
+          fi
+          conflicted_files=$(git diff --name-only --diff-filter=U || true)
+          if [[ -z "$conflicted_files" ]]; then
+            # No textual conflicts; Aider still fixes precheck (build/test) failures.
+            conflicted_files=$(git diff --name-only --diff-filter=ACM)
+          fi
+          if [[ -z "$conflicted_files" ]]; then
+            echo "Nothing for Aider to fix." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Files handed to Aider:" >> "$GITHUB_STEP_SUMMARY"
+          echo "$conflicted_files" >> "$GITHUB_STEP_SUMMARY"
+          # shellcheck disable=SC2086
+          aider \
+            --yes-always \
+            --no-git \
+            --no-auto-commits \
+            --no-attribute-commit-message-author \
+            --no-attribute-commit-message-committer \
+            --message "$AIDER_MESSAGE" \
+            $conflicted_files
 
-          Resolve every Git conflict and fix any XHTTP test or build failures.
-          Preserve the independent xhttp-box README, release automation, and
-          all project-specific XHTTP implementation, protocol options, Xray
-          interoperability, REALITY/uTLS, HTTP/3, lifecycle, and XMUX tests.
-          Prefer upstream changes outside project-specific XHTTP code. Make
-          the smallest necessary compatibility changes. Do not abort the
-          merge, create commits, push, open pull requests, or modify unrelated
-          behavior. Leave all resolved changes in the working tree and run
-          focused tests when useful.
-          " \
-            --allow-tool='shell(git:*)' \
-            --allow-tool='shell(go:*)' \
-            --allow-tool='shell(gofmt:*)' \
-            --allow-tool='shell(rg:*)' \
-            --allow-tool=write \
-            --no-ask-user
-
-      - name: Commit Copilot adaptation
-        if: steps.copilot.outcome == 'success'
+      - name: Commit Aider adaptation
+        if: steps.aider.outcome == 'success'
         env:
           BASE_SHA: ${{ github.sha }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
@@ -258,7 +245,7 @@ jobs:
 
           unmerged=$(git diff --name-only --diff-filter=U)
           if [[ -n "$unmerged" ]]; then
-            echo "Copilot left unresolved conflicts:" >&2
+            echo "Aider left unresolved conflicts:" >&2
             echo "$unmerged" >&2
             exit 1
           fi
@@ -270,8 +257,8 @@ jobs:
             git commit -m "fix(xhttp): adapt to upstream $UPSTREAM_TAG"
           fi
 
-      - name: Validate Copilot adaptation
-        if: steps.copilot.outcome == 'success'
+      - name: Validate Aider adaptation
+        if: steps.aider.outcome == 'success'
         run: |
           set -euo pipefail
           .github/check-branding.sh
@@ -292,7 +279,7 @@ jobs:
           BRANCH: ${{ steps.upstream.outputs.branch }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
           UPSTREAM_SHA: ${{ steps.upstream.outputs.upstream_sha }}
-          COPILOT_USED: ${{ steps.copilot.outcome == 'success' }}
+          AIDER_USED: ${{ steps.aider.outcome == 'success' }}
         run: |
           set -euo pipefail
           if ! git diff --quiet "${GITHUB_SHA}..HEAD" -- .github/workflows; then
@@ -313,7 +300,7 @@ jobs:
           - Repository: \`SagerNet/sing-box\`
           - Tag: \`$UPSTREAM_TAG\`
           - Commit: \`$UPSTREAM_SHA\`
-          - Copilot adaptation used: \`$COPILOT_USED\`
+          - Aider adaptation used: \`$AIDER_USED\`
 
           ## Validation
 
