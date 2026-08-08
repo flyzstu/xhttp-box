@@ -222,7 +222,7 @@ jobs:
             aider \
               --yes-always \
               --no-git \
-              --no-repo-map \
+              --map-tokens 0 \
               --no-auto-commits \
               --no-attribute-commit-message-author \
               --no-attribute-commit-message-committer \
