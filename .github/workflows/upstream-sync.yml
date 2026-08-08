@@ -183,11 +183,11 @@ jobs:
         env:
           AIDER_OPENAI_API_BASE: ${{
             secrets.OPENAI_API_BASE ||
-            'https://openrouter.ai/api/v1' }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            'https://inference-api.nousresearch.com/v1' }}
+          AIDER_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           AIDER_MODEL: ${{
             secrets.AIDER_MODEL ||
-            'openrouter/free' }}
+            'openai/stepfun/step-3.7-flash:free' }}
           UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
           AIDER_MESSAGE: >-
             Adapt xhttp-box to the in-progress merge of SagerNet/sing-box
@@ -203,8 +203,8 @@ jobs:
             and run focused tests when useful.
         run: |
           set -euo pipefail
-          if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
-            echo "Missing OpenRouter API key. Set the OPENAI_API_KEY secret." >&2
+          if [[ -z "${AIDER_OPENAI_API_KEY:-}" ]]; then
+            echo "Missing API key. Set the OPENAI_API_KEY secret." >&2
             exit 1
           fi
           # Batch conflicts into small groups so the prompt stays under the
