@@ -8519,6 +8519,30 @@
         },
         "timestamp": {
           "type": "boolean"
+        },
+        "rotate": {
+          "$ref": "#/$defs/LogRotateOptions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "LogRotateOptions": {
+      "type": "object",
+      "properties": {
+        "max_size": {
+          "type": "integer"
+        },
+        "max_age": {
+          "type": "integer"
+        },
+        "max_backups": {
+          "type": "integer"
+        },
+        "timezone": {
+          "type": "string"
+        },
+        "rotate_at": {
+          "type": "string"
         }
       },
       "additionalProperties": false

@@ -144,6 +144,10 @@ func (p *linuxPlatformInterface) SendNotification(notification *adapter.Notifica
 	return nil
 }
 
+func (p *linuxPlatformInterface) CancelNotification(identifier string, typeID int32) error {
+	return nil
+}
+
 func (p *linuxPlatformInterface) MyInterfaceAddress() []netip.Addr {
 	return nil
 }

@@ -287,7 +287,7 @@ func (s *Server) authenticate(ctx gliderssh.Context, conn gossh.ConnMetadata) (*
 		s.logger.Warn("SSH auth: unknown peer ", remoteAddrPort)
 		return nil, &gossh.PartialSuccessError{}
 	}
-	netMap := localBackend.NetMap()
+	netMap := localBackend.NetMapNoPeers()
 	if netMap == nil || netMap.SSHPolicy == nil {
 		s.logger.Warn("SSH auth: no SSH policy")
 		return nil, &gossh.PartialSuccessError{}
@@ -419,7 +419,7 @@ func (s *Server) holdAndDelegate(ctx context.Context, action *tailcfg.SSHAction,
 		srcNodeIP = node.Addresses().At(0).Addr()
 	}
 	var dstNodeID string
-	netMap := lb.NetMap()
+	netMap := lb.NetMapNoPeers()
 	if netMap != nil && netMap.SelfNode.Valid() {
 		dstNodeID = fmt.Sprint(int64(netMap.SelfNode.ID()))
 	}
@@ -582,11 +582,13 @@ func (s *Server) handleSession(session gliderssh.Session) {
 	session.DisablePTYEmulation()
 	command := session.RawCommand()
 	var term string
-	var rows, cols uint16
+	var rows, cols, widthPixels, heightPixels uint16
 	if isPty {
 		term = ptyReq.Term
 		rows = clampWindowDimension(ptyReq.Window.Height)
 		cols = clampWindowDimension(ptyReq.Window.Width)
+		widthPixels = clampWindowDimension(ptyReq.Window.WidthPixels)
+		heightPixels = clampWindowDimension(ptyReq.Window.HeightPixels)
 	}
 	var rec *recording
 	recorderList, onFailure := recorders(connInfo)
@@ -611,12 +613,14 @@ func (s *Server) handleSession(session gliderssh.Session) {
 		}
 	}
 	shellSession, err := s.backend.OpenSession(shellRequest{
-		User:    localUser,
-		Command: command,
-		Env:     env,
-		Term:    term,
-		Rows:    rows,
-		Cols:    cols,
+		User:         localUser,
+		Command:      command,
+		Env:          env,
+		Term:         term,
+		Rows:         rows,
+		Cols:         cols,
+		WidthPixels:  widthPixels,
+		HeightPixels: heightPixels,
 	})
 	if err != nil {
 		s.logger.Error("failed to open shell session: ", err)
@@ -661,7 +665,12 @@ func (s *Server) handleSession(session gliderssh.Session) {
 			for win := range winCh {
 				shellAccess.Lock()
 				if shellAlive {
-					shellSession.Resize(clampWindowDimension(win.Height), clampWindowDimension(win.Width))
+					shellSession.Resize(
+						clampWindowDimension(win.Height),
+						clampWindowDimension(win.Width),
+						clampWindowDimension(win.WidthPixels),
+						clampWindowDimension(win.HeightPixels),
+					)
 				}
 				shellAccess.Unlock()
 			}
@@ -831,7 +840,7 @@ func (s *Server) buildEnvironment(session gliderssh.Session, connInfo *sshConnIn
 	// capability, matching upstream's capability gate.
 	acceptEnv := connInfo.acceptEnv
 	if len(acceptEnv) > 0 {
-		netMap := s.tsnetServer.ExportLocalBackend().NetMap()
+		netMap := s.tsnetServer.ExportLocalBackend().NetMapNoPeers()
 		if netMap == nil || !netMap.HasCap(tailcfg.NodeAttrSSHEnvironmentVariables) {
 			acceptEnv = nil
 		}
@@ -957,7 +966,7 @@ func (s *Server) allowReverseUnixForward(ctx gliderssh.Context, socketPath strin
 
 func (s *Server) OnReconfig(cfg *wgcfg.Config, routerCfg *router.Config, dnsCfg *tsDNS.Config) {
 	localBackend := s.tsnetServer.ExportLocalBackend()
-	netMap := localBackend.NetMap()
+	netMap := localBackend.NetMapNoPeers()
 	if netMap == nil || netMap.SSHPolicy == nil {
 		return
 	}

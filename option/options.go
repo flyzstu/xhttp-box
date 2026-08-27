@@ -67,11 +67,20 @@ func (o *Options) SetComments(comments *json.CommentSet) {
 }
 
 type LogOptions struct {
-	Disabled     bool   `json:"disabled,omitempty"`
-	Level        string `json:"level,omitempty" enum:"trace,debug,info,warn,warning,error,fatal,panic"`
-	Output       string `json:"output,omitempty"`
-	Timestamp    bool   `json:"timestamp,omitempty"`
-	DisableColor bool   `json:"-"`
+	Disabled     bool              `json:"disabled,omitempty"`
+	Level        string            `json:"level,omitempty" enum:"trace,debug,info,warn,warning,error,fatal,panic"`
+	Output       string            `json:"output,omitempty"`
+	Timestamp    bool              `json:"timestamp,omitempty"`
+	DisableColor bool              `json:"-"`
+	Rotate       *LogRotateOptions `json:"rotate,omitempty"`
+}
+
+type LogRotateOptions struct {
+	MaxSize    int    `json:"max_size,omitempty"`    // MaxSize is the maximum size in megabytes of a single log file before it is rotated. 0 disables size-based rotation.
+	MaxAge     int    `json:"max_age,omitempty"`     // MaxAge is the maximum age in days of a single log file before it is rotated. 0 disables time-based rotation.
+	MaxBackups int    `json:"max_backups,omitempty"` // MaxBackups is the maximum number of rotated log files to keep. 0 keeps all rotated files.
+	Timezone   string `json:"timezone,omitempty"`    // Timezone is the IANA time zone used for RotateAt, e.g. "Asia/Shanghai". Empty means local time.
+	RotateAt   string `json:"rotate_at,omitempty"`   // RotateAt is the time of day in "HH:MM" format when the log file is rotated daily in the configured Timezone. Empty disables scheduled rotation.
 }
 
 type StubOptions struct{}

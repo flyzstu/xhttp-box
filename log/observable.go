@@ -22,11 +22,20 @@ type defaultFactory struct {
 	writer            io.Writer
 	file              *os.File
 	filePath          string
+	rotateOptions     *RotateOptions
 	platformWriters   atomic.Pointer[[]PlatformWriter]
 	needObservable    bool
 	level             Level
 	subscriber        *observable.Subscriber[Entry]
 	observer          *observable.Observer[Entry]
+}
+
+type RotateOptions struct {
+	MaxSize    int
+	MaxAge     int
+	MaxBackups int
+	Timezone   string
+	RotateAt   string
 }
 
 func NewDefaultFactory(
@@ -37,6 +46,18 @@ func NewDefaultFactory(
 	platformWriter PlatformWriter,
 	needObservable bool,
 ) ObservableFactory {
+	return newDefaultFactory(ctx, formatter, writer, filePath, platformWriter, needObservable, nil)
+}
+
+func newDefaultFactory(
+	ctx context.Context,
+	formatter Formatter,
+	writer io.Writer,
+	filePath string,
+	platformWriter PlatformWriter,
+	needObservable bool,
+	rotateOptions *RotateOptions,
+) ObservableFactory {
 	factory := &defaultFactory{
 		ctx:       ctx,
 		formatter: formatter,
@@ -46,6 +67,7 @@ func NewDefaultFactory(
 		},
 		writer:         writer,
 		filePath:       filePath,
+		rotateOptions:  rotateOptions,
 		needObservable: needObservable,
 		level:          LevelTrace,
 		subscriber:     observable.NewSubscriber[Entry](128),
@@ -61,12 +83,20 @@ func NewDefaultFactory(
 
 func (f *defaultFactory) Start() error {
 	if f.filePath != "" {
-		logFile, err := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
+		if f.rotateOptions != nil && (f.rotateOptions.MaxSize > 0 || f.rotateOptions.MaxAge > 0 || f.rotateOptions.RotateAt != "") {
+			rotatingWriter, err := newRotatingFileWriter(f.ctx, f.filePath, f.rotateOptions)
+			if err != nil {
+				return err
+			}
+			f.writer = rotatingWriter
+		} else {
+			logFile, err := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			if err != nil {
+				return err
+			}
+			f.writer = logFile
+			f.file = logFile
 		}
-		f.writer = logFile
-		f.file = logFile
 	}
 	if f.needObservable {
 		f.observer = observable.NewObserver[Entry](f.subscriber, 64)
@@ -75,8 +105,14 @@ func (f *defaultFactory) Start() error {
 }
 
 func (f *defaultFactory) Close() error {
+	var writer io.Closer
+	if f.file != nil {
+		writer = f.file
+	} else if closer, ok := f.writer.(io.Closer); ok {
+		writer = closer
+	}
 	return common.Close(
-		common.PtrOrNil(f.file),
+		writer,
 		f.subscriber,
 	)
 }

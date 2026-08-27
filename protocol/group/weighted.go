@@ -232,7 +232,7 @@ func (w *Weighted) Close() error {
 	return nil
 }
 
-func (w *Weighted) InterfaceUpdated() {
+func (w *Weighted) InterfaceUpdated(ctx context.Context) {
 	if w.healthEnabled {
 		go w.checkOutbounds()
 	}

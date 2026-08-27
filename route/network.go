@@ -456,7 +456,7 @@ func (r *NetworkManager) UpdateWIFIState() {
 	r.onWIFIStateChanged(state)
 }
 
-func (r *NetworkManager) ResetNetwork() {
+func (r *NetworkManager) ResetNetwork(ctx context.Context) {
 	if r.connectionManager != nil {
 		r.connectionManager.CloseAll()
 	}
@@ -464,21 +464,21 @@ func (r *NetworkManager) ResetNetwork() {
 	for _, endpoint := range r.endpoint.Endpoints() {
 		listener, isListener := endpoint.(adapter.InterfaceUpdateListener)
 		if isListener {
-			listener.InterfaceUpdated()
+			listener.InterfaceUpdated(ctx)
 		}
 	}
 
 	for _, inbound := range r.inbound.Inbounds() {
 		listener, isListener := inbound.(adapter.InterfaceUpdateListener)
 		if isListener {
-			listener.InterfaceUpdated()
+			listener.InterfaceUpdated(ctx)
 		}
 	}
 
 	for _, outbound := range r.outbound.Outbounds() {
 		listener, isListener := outbound.(adapter.InterfaceUpdateListener)
 		if isListener {
-			listener.InterfaceUpdated()
+			listener.InterfaceUpdated(ctx)
 		}
 	}
 
@@ -525,14 +525,14 @@ func (r *NetworkManager) notifyInterfaceUpdate(defaultInterface *control.Interfa
 	if !r.started {
 		return
 	}
-	r.ResetNetwork()
+	r.ResetNetwork(r.ctx)
 }
 
 func (r *NetworkManager) notifyWindowsPowerEvent(event int) {
 	switch event {
 	case winpowrprof.EVENT_SUSPEND:
 		r.pauseManager.DevicePause()
-		r.ResetNetwork()
+		r.ResetNetwork(r.ctx)
 	case winpowrprof.EVENT_RESUME:
 		if !r.pauseManager.IsDevicePaused() {
 			return
@@ -540,7 +540,7 @@ func (r *NetworkManager) notifyWindowsPowerEvent(event int) {
 		fallthrough
 	case winpowrprof.EVENT_RESUME_AUTOMATIC:
 		r.pauseManager.DeviceWake()
-		r.ResetNetwork()
+		r.ResetNetwork(r.ctx)
 	}
 }
 

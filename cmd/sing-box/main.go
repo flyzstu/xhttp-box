@@ -2,7 +2,11 @@
 
 package main
 
-import "github.com/sagernet/sing-box/log"
+import (
+	_ "time/tzdata"
+
+	"github.com/sagernet/sing-box/log"
+)
 
 func main() {
 	if err := mainCommand.Execute(); err != nil {

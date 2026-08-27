@@ -153,7 +153,7 @@ func (w *Endpoint) Close() error {
 	return w.endpoint.Close()
 }
 
-func (w *Endpoint) InterfaceUpdated() {
+func (w *Endpoint) InterfaceUpdated(ctx context.Context) {
 	if !w.started.Load() {
 		return
 	}

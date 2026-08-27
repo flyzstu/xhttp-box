@@ -43,6 +43,9 @@ type Locale struct {
 	VPNAuthentication       string
 	VPNConnected            string
 	VPNError                string
+	TaildropReceiving       string
+	TaildropReceived        string
+	TaildropSendCanceled    string
 	Unknown                 string
 }
 
@@ -63,6 +66,9 @@ var defaultLocale = &Locale{
 	VPNAuthentication:       "Authentication required",
 	VPNConnected:            "Connected",
 	VPNError:                "Error",
+	TaildropReceiving:       "Receiving %s from %s",
+	TaildropReceived:        "%s received from %s",
+	TaildropSendCanceled:    "Sending %s canceled by receiver",
 	Unknown:                 "Unknown",
 }
 

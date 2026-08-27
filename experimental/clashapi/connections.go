@@ -173,7 +173,7 @@ func closeConnection(trafficManager *trafficcontrol.Manager) func(w http.Respons
 func closeAllConnections(network adapter.NetworkManager, trafficManager *trafficcontrol.Manager) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		trafficManager.CloseAllConnections()
-		network.ResetNetwork()
+		network.ResetNetwork(r.Context())
 		render.NoContent(w, r)
 	}
 }

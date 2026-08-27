@@ -1,6 +1,7 @@
 package adapter
 
 import (
+	"context"
 	"encoding/hex"
 	"net"
 	"strings"
@@ -31,7 +32,7 @@ type NetworkManager interface {
 	NeedWIFIState() bool
 	WIFIState() WIFIState
 	UpdateWIFIState()
-	ResetNetwork()
+	ResetNetwork(ctx context.Context)
 }
 
 type NetworkOptions struct {
@@ -46,7 +47,7 @@ type NetworkOptions struct {
 }
 
 type InterfaceUpdateListener interface {
-	InterfaceUpdated()
+	InterfaceUpdated(ctx context.Context)
 }
 
 type WIFIState struct {

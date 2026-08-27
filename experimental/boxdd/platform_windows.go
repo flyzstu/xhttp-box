@@ -159,6 +159,10 @@ func (p *windowsPlatformInterface) SendNotification(notification *adapter.Notifi
 	return nil
 }
 
+func (p *windowsPlatformInterface) CancelNotification(identifier string, typeID int32) error {
+	return nil
+}
+
 func (p *windowsPlatformInterface) MyInterfaceAddress() []netip.Addr {
 	return nil
 }

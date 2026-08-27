@@ -117,7 +117,7 @@ func (s *URLTest) CheckOutbounds() {
 	s.group.CheckOutbounds(true)
 }
 
-func (s *URLTest) InterfaceUpdated() {
+func (s *URLTest) InterfaceUpdated(ctx context.Context) {
 	group := s.group
 	if group == nil {
 		return
