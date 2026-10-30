@@ -84,6 +84,9 @@ func proxyInfo(server *Server, detour adapter.Outbound) *badjson.JSONObject {
 		info.Put("now", now)
 		info.Put("all", group.All())
 	}
+	if weighted, isWeighted := detour.(*group.Weighted); isWeighted {
+		info.Put("weighted_status", weighted.Status())
+	}
 	return &info
 }
 

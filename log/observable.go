@@ -23,6 +23,7 @@ type defaultFactory struct {
 	writer            io.Writer
 	file              *os.File
 	filePath          string
+	rotateOptions     *RotateOptions
 	platformWriters   atomic.Pointer[[]PlatformWriter]
 	needConsole       bool
 	needObservable    bool
@@ -42,6 +43,14 @@ type pendingEntry struct {
 	timestamp time.Time
 }
 
+type RotateOptions struct {
+	MaxSize    int
+	MaxAge     int
+	MaxBackups int
+	Timezone   string
+	RotateAt   string
+}
+
 func NewDefaultFactory(
 	ctx context.Context,
 	formatter Formatter,
@@ -49,6 +58,18 @@ func NewDefaultFactory(
 	filePath string,
 	platformWriter PlatformWriter,
 	needObservable bool,
+) ObservableFactory {
+	return newDefaultFactory(ctx, formatter, writer, filePath, platformWriter, needObservable, nil)
+}
+
+func newDefaultFactory(
+	ctx context.Context,
+	formatter Formatter,
+	writer io.Writer,
+	filePath string,
+	platformWriter PlatformWriter,
+	needObservable bool,
+	rotateOptions *RotateOptions,
 ) ObservableFactory {
 	factory := &defaultFactory{
 		ctx:       ctx,
@@ -59,6 +80,7 @@ func NewDefaultFactory(
 		},
 		writer:         writer,
 		filePath:       filePath,
+		rotateOptions:  rotateOptions,
 		needConsole:    writer != io.Discard || filePath != "",
 		needObservable: needObservable,
 		level:          LevelTrace,
@@ -76,12 +98,21 @@ func NewDefaultFactory(
 func (f *defaultFactory) Start() error {
 	var err error
 	if f.filePath != "" {
-		logFile, openErr := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if openErr != nil {
-			err = openErr
+		if f.rotateOptions != nil && (f.rotateOptions.MaxSize > 0 || f.rotateOptions.MaxAge > 0 || f.rotateOptions.RotateAt != "") {
+			rotatingWriter, rotateErr := newRotatingFileWriter(f.ctx, f.filePath, f.rotateOptions)
+			if rotateErr != nil {
+				err = rotateErr
+			} else {
+				f.writer = rotatingWriter
+			}
 		} else {
-			f.writer = logFile
-			f.file = logFile
+			logFile, openErr := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+			if openErr != nil {
+				err = openErr
+			} else {
+				f.writer = logFile
+				f.file = logFile
+			}
 		}
 		f.needConsole = f.writer != io.Discard
 	}
@@ -103,8 +134,14 @@ func (f *defaultFactory) Close() error {
 	f.startAccess.Lock()
 	f.pendingEntries = nil
 	f.startAccess.Unlock()
+	var writer io.Closer
+	if f.file != nil {
+		writer = f.file
+	} else if closer, ok := f.writer.(io.Closer); ok {
+		writer = closer
+	}
 	return common.Close(
-		common.PtrOrNil(f.file),
+		writer,
 		f.subscriber,
 	)
 }

@@ -58,6 +58,10 @@ func readConfigAt(path string) (*OptionsEntry, error) {
 	if err != nil {
 		return nil, E.Cause(err, "read config at ", path)
 	}
+	configContent, err = expandEnvVariables(configContent, path)
+	if err != nil {
+		return nil, err
+	}
 	options, err := json.UnmarshalExtendedContext[option.Options](globalCtx, configContent)
 	if err != nil {
 		return nil, E.Cause(err, "decode config at ", path)
@@ -209,7 +213,7 @@ func run() error {
 			closed()
 			if osSignal != syscall.SIGHUP {
 				if err != nil {
-					log.Error(E.Cause(err, "sing-box did not closed properly"))
+					log.Error(E.Cause(err, "xhttp-box did not close properly"))
 				}
 				return nil
 			}
@@ -229,5 +233,5 @@ func closeMonitor(ctx context.Context) {
 		return
 	default:
 	}
-	log.Fatal("sing-box did not close!")
+	log.Fatal("xhttp-box did not close!")
 }

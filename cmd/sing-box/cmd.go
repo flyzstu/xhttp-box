@@ -26,7 +26,7 @@ var (
 )
 
 var mainCommand = &cobra.Command{
-	Use:              "sing-box",
+	Use:              "xhttp-box",
 	PersistentPreRun: preRun,
 }
 

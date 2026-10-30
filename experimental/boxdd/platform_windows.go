@@ -163,6 +163,10 @@ func (p *windowsPlatformInterface) CancelNotification(identifier string, typeID 
 	return p.daemon.startedService.CancelNotification(identifier, typeID)
 }
 
+func (p *windowsPlatformInterface) CancelNotification(identifier string, typeID int32) error {
+	return nil
+}
+
 func (p *windowsPlatformInterface) MyInterfaceAddress() []netip.Addr {
 	return nil
 }

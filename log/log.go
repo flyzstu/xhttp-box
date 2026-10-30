@@ -50,13 +50,14 @@ func New(options Options) (Factory, error) {
 		FullTimestamp:    logOptions.Timestamp,
 		TimestampFormat:  "-0700 2006-01-02 15:04:05",
 	}
-	factory := NewDefaultFactory(
+	factory := newDefaultFactory(
 		options.Context,
 		logFormatter,
 		logWriter,
 		logFilePath,
 		options.PlatformWriter,
 		options.Observable,
+		convertRotateOptions(logOptions.Rotate),
 	)
 	if logOptions.Level != "" {
 		logLevel, err := ParseLevel(logOptions.Level)
@@ -68,4 +69,17 @@ func New(options Options) (Factory, error) {
 		factory.SetLevel(LevelTrace)
 	}
 	return factory, nil
+}
+
+func convertRotateOptions(options *option.LogRotateOptions) *RotateOptions {
+	if options == nil {
+		return nil
+	}
+	return &RotateOptions{
+		MaxSize:    options.MaxSize,
+		MaxAge:     options.MaxAge,
+		MaxBackups: options.MaxBackups,
+		Timezone:   options.Timezone,
+		RotateAt:   options.RotateAt,
+	}
 }

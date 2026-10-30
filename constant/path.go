@@ -7,7 +7,7 @@ import (
 	"github.com/sagernet/sing/common/rw"
 )
 
-const dirName = "sing-box"
+const dirName = "xhttp-box"
 
 var resourcePaths []string
 

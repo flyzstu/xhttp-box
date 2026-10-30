@@ -12,15 +12,15 @@ func main() {
 }
 
 func generateCompletions() error {
-	err := mainCommand.GenBashCompletionFile("release/completions/sing-box.bash")
+	err := mainCommand.GenBashCompletionFile("release/completions/xhttp-box.bash")
 	if err != nil {
 		return err
 	}
-	err = mainCommand.GenFishCompletionFile("release/completions/sing-box.fish", true)
+	err = mainCommand.GenFishCompletionFile("release/completions/xhttp-box.fish", true)
 	if err != nil {
 		return err
 	}
-	err = mainCommand.GenZshCompletionFile("release/completions/sing-box.zsh")
+	err = mainCommand.GenZshCompletionFile("release/completions/xhttp-box.zsh")
 	if err != nil {
 		return err
 	}

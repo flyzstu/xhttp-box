@@ -1,0 +1,44 @@
+#!/sbin/openrc-run
+
+name=$RC_SVCNAME
+description="xhttp-box service"
+supervisor="supervise-daemon"
+command="/usr/bin/xhttp-box"
+extra_commands="checkconfig"
+extra_started_commands="reload"
+
+: ${XHTTPBOX_CONFIG:=${config:-"/etc/xhttp-box"}}
+
+if [ -d "$XHTTPBOX_CONFIG" ]; then
+	_config_opt="-C $XHTTPBOX_CONFIG"
+elif [ -z "$XHTTPBOX_CONFIG" ]; then
+	_config_opt=""
+else
+	_config_opt="-c $XHTTPBOX_CONFIG"
+fi
+
+_workdir=${XHTTPBOX_WORKDIR:-${workdir:-"/var/lib/xhttp-box"}}
+
+command_args="run --disable-color
+	-D $_workdir
+	$_config_opt"
+
+depend() {
+	after net dns
+}
+
+checkconfig() {
+	ebegin "Checking $RC_SVCNAME configuration"
+	xhttp-box check -D "$_workdir" $_config_opt
+	eend $?
+}
+
+start_pre() {
+	checkconfig
+}
+
+reload() {
+	ebegin "Reloading $RC_SVCNAME"
+	checkconfig && $supervisor "$RC_SVCNAME" --signal HUP
+	eend $?
+}

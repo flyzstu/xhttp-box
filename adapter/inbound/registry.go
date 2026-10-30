@@ -2,79 +2,37 @@ package inbound
 
 import (
 	"context"
-	"maps"
-	"slices"
-	"sync"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/registry"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/common"
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 type ConstructorFunc[T any] func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options T) (adapter.Inbound, error)
 
+type Registry struct {
+	*registry.Registry[adapter.Inbound]
+}
+
+func NewRegistry() *Registry {
+	return &Registry{registry.New[adapter.Inbound]("outbound")}
+}
+
 func Register[Options any](registry *Registry, outboundType string, constructor ConstructorFunc[Options]) {
-	registry.register(outboundType, func() any {
+	registry.Register(outboundType, func() any {
 		return new(Options)
-	}, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, rawOptions any) (adapter.Inbound, error) {
+	}, func(ctx context.Context, router any, logger log.ContextLogger, tag string, rawOptions any) (adapter.Inbound, error) {
 		var options *Options
 		if rawOptions != nil {
 			options = rawOptions.(*Options)
 		}
-		return constructor(ctx, router, logger, tag, common.PtrValueOrDefault(options))
+		return constructor(ctx, router.(adapter.Router), logger, tag, common.PtrValueOrDefault(options))
 	})
 }
 
 var _ adapter.InboundRegistry = (*Registry)(nil)
 
-type (
-	optionsConstructorFunc func() any
-	constructorFunc        func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options any) (adapter.Inbound, error)
-)
-
-type Registry struct {
-	access      sync.Mutex
-	optionsType map[string]optionsConstructorFunc
-	constructor map[string]constructorFunc
-}
-
-func NewRegistry() *Registry {
-	return &Registry{
-		optionsType: make(map[string]optionsConstructorFunc),
-		constructor: make(map[string]constructorFunc),
-	}
-}
-
-func (m *Registry) OptionTypes() []string {
-	m.access.Lock()
-	defer m.access.Unlock()
-	return slices.Sorted(maps.Keys(m.optionsType))
-}
-
-func (m *Registry) CreateOptions(outboundType string) (any, bool) {
-	m.access.Lock()
-	defer m.access.Unlock()
-	optionsConstructor, loaded := m.optionsType[outboundType]
-	if !loaded {
-		return nil, false
-	}
-	return optionsConstructor(), true
-}
-
-func (m *Registry) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, outboundType string, options any) (adapter.Inbound, error) {
-	m.access.Lock()
-	defer m.access.Unlock()
-	constructor, loaded := m.constructor[outboundType]
-	if !loaded {
-		return nil, E.New("outbound type not found: " + outboundType)
-	}
-	return constructor(ctx, router, logger, tag, options)
-}
-
-func (m *Registry) register(outboundType string, optionsConstructor optionsConstructorFunc, constructor constructorFunc) {
-	m.access.Lock()
-	defer m.access.Unlock()
-	m.optionsType[outboundType] = optionsConstructor
-	m.constructor[outboundType] = constructor
+func (m *Registry) Create(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, inboundType string, options any) (adapter.Inbound, error) {
+	return m.Registry.Create(ctx, router, logger, tag, inboundType, options)
 }
