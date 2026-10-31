@@ -59,7 +59,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 
 	service, err := anytls.NewService(anytls.ServiceConfig{
 		Users: common.Map(options.Users, func(it option.AnyTLSUser) anytls.User {
-			return (anytls.User)(it)
+			return anytls.User(it)
 		}),
 		PaddingScheme: paddingScheme,
 		Handler:       (*inboundHandler)(inbound),
@@ -79,7 +79,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -88,12 +88,14 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return err
 		}
+		scope.Add(h.tlsConfig.Close)
 	}
-	return h.listener.Start()
-}
-
-func (h *Inbound) Close() error {
-	return common.Close(h.listener, h.tlsConfig)
+	err := h.listener.Start()
+	if err != nil {
+		return err
+	}
+	scope.Add(h.listener.Close)
+	return nil
 }
 
 func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {

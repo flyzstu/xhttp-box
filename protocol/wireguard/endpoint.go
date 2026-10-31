@@ -4,12 +4,14 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/iponly"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -27,6 +29,7 @@ import (
 var (
 	_ adapter.OutboundWithPreferredRoutes = (*Endpoint)(nil)
 	_ adapter.InterfaceUpdateListener     = (*Endpoint)(nil)
+	_ adapter.OutboundWithMultiplex       = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
 )
 
@@ -42,6 +45,7 @@ type Endpoint struct {
 	logger         logger.ContextLogger
 	localAddresses []netip.Prefix
 	endpoint       *wireguard.Endpoint
+	bindAccess     sync.Mutex
 	started        atomic.Bool
 }
 
@@ -103,17 +107,14 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 				},
 			}))
 		},
+		Tag:        tag,
 		Name:       options.Name,
 		MTU:        options.MTU,
 		Address:    options.Address,
 		PrivateKey: options.PrivateKey,
 		ListenPort: options.ListenPort,
-		ResolvePeer: func(domain string) (netip.Addr, error) {
-			endpointAddresses, lookupErr := ep.dnsRouter.Lookup(ctx, domain, outboundDialer.(dialer.ResolveDialer).QueryOptions())
-			if lookupErr != nil {
-				return netip.Addr{}, lookupErr
-			}
-			return endpointAddresses[0], nil
+		ResolvePeer: func(domain string) ([]netip.Addr, error) {
+			return ep.dnsRouter.Lookup(ctx, domain, outboundDialer.(dialer.ResolveDialer).QueryOptions())
 		},
 		Peers: common.Map(options.Peers, func(it option.WireGuardPeer) wireguard.PeerOptions {
 			return wireguard.PeerOptions{
@@ -134,8 +135,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	return ep, nil
 }
 
-func (w *Endpoint) Start(stage adapter.StartStage) error {
+func (w *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	switch stage {
+	case adapter.StartStateInitialize:
+		scope.Add(w.endpoint.Close)
 	case adapter.StartStateStart:
 		return w.endpoint.Start(false)
 	case adapter.StartStatePostStart:
@@ -144,17 +147,31 @@ func (w *Endpoint) Start(stage adapter.StartStage) error {
 			return err
 		}
 		w.started.Store(true)
+		scope.Add(func() error {
+			w.bindAccess.Lock()
+			w.started.Store(false)
+			w.bindAccess.Unlock()
+			return nil
+		})
 	}
 	return nil
 }
 
-func (w *Endpoint) Close() error {
-	w.started.Store(false)
-	return w.endpoint.Close()
+func (w *Endpoint) MultiplexEnabled() bool {
+	return true
 }
 
 func (w *Endpoint) InterfaceUpdated(ctx context.Context) {
 	if !w.started.Load() {
+		return
+	}
+	go w.updateBind(ctx)
+}
+
+func (w *Endpoint) updateBind(ctx context.Context) {
+	w.bindAccess.Lock()
+	defer w.bindAccess.Unlock()
+	if ctx.Err() != nil || !w.started.Load() {
 		return
 	}
 	err := w.endpoint.BindUpdate()
@@ -288,16 +305,20 @@ func (w *Endpoint) ListenPacketWithDestination(ctx context.Context, destination 
 		if err != nil {
 			return nil, netip.Addr{}, err
 		}
-		return N.ListenSerial(ctx, w.endpoint, destination, destinationAddresses)
+		packetConn, destinationAddress, err := N.ListenSerial(ctx, w.endpoint, destination, destinationAddresses)
+		if err != nil {
+			return nil, netip.Addr{}, err
+		}
+		return iponly.NewPacketConn(w.logger, packetConn), destinationAddress, nil
 	}
 	packetConn, err := w.endpoint.ListenPacket(ctx, destination)
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
 	if destination.IsIP() {
-		return packetConn, destination.Addr, nil
+		return iponly.NewPacketConn(w.logger, packetConn), destination.Addr, nil
 	}
-	return packetConn, netip.Addr{}, nil
+	return iponly.NewPacketConn(w.logger, packetConn), netip.Addr{}, nil
 }
 
 func (w *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

@@ -14,6 +14,8 @@ icon: material/alert-decagram
     :material-plus: [response_ns](#response_ns)  
     :material-plus: [response_extra](#response_extra)  
     :material-plus: [package_name_regex](#package_name_regex)  
+    :material-plus: [query_client_subnet](#query_client_subnet)  
+    :material-plus: [query_dnssec](#query_dnssec)  
     :material-alert: [ip_version](#ip_version)  
     :material-alert: [query_type](#query_type)
 
@@ -77,6 +79,11 @@ icon: material/alert-decagram
           "HTTPS",
           32768
         ],
+        "query_client_subnet": [
+          "10.0.0.0/24",
+          "192.168.0.1"
+        ],
+        "query_dnssec": false,
         "network": "tcp",
         "auth_user": [
           "usera",
@@ -236,7 +243,7 @@ icon: material/alert-decagram
 !!! note ""
 
     默认规则使用以下匹配逻辑:  
-    (`domain` || `domain_suffix` || `domain_keyword` || `domain_regex` || `geosite`) &&  
+    (`domain` || `domain_suffix` || `domain_keyword` || `domain_regex` || `geosite` || `ip_cidr` || `ip_is_private` || `ip_accept_any`) &&  
     (`port` || `port_range`) &&  
     (`source_geoip` || `source_ip_cidr` || `source_ip_is_private`) &&  
     (`source_port` || `source_port_range`) &&  
@@ -253,8 +260,7 @@ icon: material/alert-decagram
 !!! quote "sing-box 1.14.0 中的更改"
 
     此字段现在也会在 DNS 规则被未指定具体 DNS 服务器的内部域名解析匹配时生效，
-    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。
-    此前只有来自客户端的 DNS 查询才会评估此字段。完整列表参阅
+    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。参阅
     [迁移指南](/zh/migration/#dns-规则中的-ip_version-和-query_type-行为更改)。
 
     在 DNS 规则中设置此字段后，该 DNS 规则在同一 DNS 配置中不能与
@@ -272,8 +278,7 @@ icon: material/alert-decagram
 !!! quote "sing-box 1.14.0 中的更改"
 
     此字段现在也会在 DNS 规则被未指定具体 DNS 服务器的内部域名解析匹配时生效，
-    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。
-    此前只有来自客户端的 DNS 查询才会评估此字段。完整列表参阅
+    例如未设置 `server` 的 [`resolve`](../../route/rule_action/#resolve) 路由规则动作。参阅
     [迁移指南](/zh/migration/#dns-规则中的-ip_version-和-query_type-行为更改)。
 
     在 DNS 规则中设置此字段后，该 DNS 规则在同一 DNS 配置中不能与
@@ -283,6 +288,22 @@ icon: material/alert-decagram
     [`match_response`](#match_response)。
 
 DNS 查询类型。值可以为整数或者类型名称字符串。
+
+#### query_client_subnet
+
+!!! question "自 sing-box 1.14.0 起"
+
+匹配查询中的 `edns0-subnet` OPT 附加记录（EDNS 客户端子网）。
+
+列出的前缀在不比收到的客户端子网更具体、且包含其地址时匹配。
+
+如果值是 IP 地址而不是前缀，则会自动附加 `/32` 或 `/128`。
+
+#### query_dnssec
+
+!!! question "自 sing-box 1.14.0 起"
+
+匹配设置了 DNSSEC OK (`DO`) 位的查询。
 
 #### network
 

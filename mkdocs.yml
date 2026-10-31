@@ -78,6 +78,7 @@ nav:
           - Hysteria 2: manual/proxy-protocol/hysteria2.md
       - Misc:
           - TunnelVision: manual/misc/tunnelvision.md
+          - AnyTLS client metadata: manual/misc/anytls-client-metadata.md
   - Configuration:
       - configuration/index.md
       - JSON Schema: configuration/schema.md
@@ -119,7 +120,7 @@ nav:
           - configuration/rule-set/index.md
           - Source Format: configuration/rule-set/source-format.md
           - Headless Rule: configuration/rule-set/headless-rule.md
-          - AdGuard DNS Filer: configuration/rule-set/adguard.md
+          - AdGuard DNS Filter: configuration/rule-set/adguard.md
       - Experimental:
           - configuration/experimental/index.md
           - Cache File: configuration/experimental/cache-file.md

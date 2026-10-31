@@ -17,6 +17,7 @@ import (
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/auth"
 	E "github.com/sagernet/sing/common/exceptions"
+	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/protocol/http"
 	"github.com/sagernet/sing/protocol/socks"
@@ -78,7 +79,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inbound, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -87,15 +88,14 @@ func (h *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "create TLS config")
 		}
+		scope.Add(h.tlsConfig.Close)
 	}
-	return h.listener.Start()
-}
-
-func (h *Inbound) Close() error {
-	return common.Close(
-		h.listener,
-		h.tlsConfig,
-	)
+	err := h.listener.Start()
+	if err != nil {
+		return err
+	}
+	scope.Add(h.listener.Close)
+	return nil
 }
 
 func (h *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
@@ -148,6 +148,7 @@ func (h *Inbound) newUserConnection(ctx context.Context, conn net.Conn, metadata
 func (h *Inbound) streamUserPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	metadata.Inbound = h.Tag()
 	metadata.InboundType = h.Type()
+	metadata.OriginDestination = M.SocksaddrFromNet(conn.LocalAddr()).Unwrap()
 	user, loaded := auth.UserFromContext[string](ctx)
 	if !loaded {
 		if !metadata.Destination.IsValid() {

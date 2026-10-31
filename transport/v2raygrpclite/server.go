@@ -56,7 +56,8 @@ func NewServer(ctx context.Context, logger logger.ContextLogger, options option.
 			return log.ContextWithNewID(ctx)
 		},
 	}
-	server.h2cHandler = h2c.NewHandler(server, server.h2Server) //nolint:staticcheck
+	//nolint:staticcheck
+	server.h2cHandler = h2c.NewHandler(server, server.h2Server)
 	return server, nil
 }
 

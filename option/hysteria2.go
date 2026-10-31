@@ -3,6 +3,7 @@ package option
 import (
 	"net/url"
 	"reflect"
+	"slices"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/schema"
@@ -10,6 +11,7 @@ import (
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
 	"github.com/sagernet/sing/common/json/badoption"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 type Hysteria2InboundOptions struct {
@@ -35,6 +37,12 @@ type Hysteria2Realm struct {
 	IPVersion   int                        `json:"ip_version,omitempty" enum:"0,4,6"`
 	PortMapping *Hysteria2RealmPortMapping `json:"port_mapping,omitempty"`
 	HTTPClient  *HTTPClientOptions         `json:"http_client,omitempty"`
+}
+
+func (r Hysteria2Realm) STUNServersIsDomain() bool {
+	return slices.ContainsFunc(r.STUNServers, func(server string) bool {
+		return M.ParseSocksaddr(server).IsDomain()
+	})
 }
 
 type Hysteria2RealmPortMapping struct {
@@ -70,10 +78,7 @@ func (o Hysteria2Obfs) MarshalJSON() ([]byte, error) {
 	default:
 		return nil, E.New("unknown obfs type: ", o.Type)
 	}
-	if v == nil {
-		return json.Marshal((_Hysteria2Obfs)(o))
-	}
-	return badjson.MarshallObjects((_Hysteria2Obfs)(o), v)
+	return badjson.MarshallObjects(_Hysteria2Obfs(o), v)
 }
 
 func (o *Hysteria2Obfs) UnmarshalJSON(bytes []byte) error {
@@ -131,7 +136,7 @@ func (m Hysteria2Masquerade) MarshalJSON() ([]byte, error) {
 	default:
 		return nil, E.New("unknown masquerade type: ", m.Type)
 	}
-	return badjson.MarshallObjects((_Hysteria2Masquerade)(m), v)
+	return badjson.MarshallObjects(_Hysteria2Masquerade(m), v)
 }
 
 func (m *Hysteria2Masquerade) UnmarshalJSON(bytes []byte) error {
@@ -212,9 +217,10 @@ type Hysteria2OutboundOptions struct {
 	Network        NetworkList                `json:"network,omitempty"`
 	OutboundTLSOptionsContainer
 	QUICOptions
-	BBRProfile  string          `json:"bbr_profile,omitempty" enum:"standard,conservative,aggressive"`
-	BrutalDebug bool            `json:"brutal_debug,omitempty"`
-	Realm       *Hysteria2Realm `json:"realm,omitempty"`
+	BBRProfile          string          `json:"bbr_profile,omitempty" enum:"standard,conservative,aggressive"`
+	BrutalDebug         bool            `json:"brutal_debug,omitempty"`
+	DisableChromeParrot bool            `json:"disable_chrome_parrot,omitempty"`
+	Realm               *Hysteria2Realm `json:"realm,omitempty"`
 }
 
 type HysteriaRealmUser struct {

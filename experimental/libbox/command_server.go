@@ -2,19 +2,17 @@ package libbox
 
 import (
 	"context"
-	"errors"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
-	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/service/oomkiller"
+	"github.com/sagernet/sing-box/service/powerreport"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/service"
@@ -34,9 +32,10 @@ type CommandServer struct {
 	handler           CommandServerHandler
 	platformInterface PlatformInterface
 	platformWrapper   *platformInterfaceWrapper
+	powerManager      *powerreport.Manager
+	oomRecorder       *oomkiller.Recorder
 	grpcServer        *grpc.Server
 	listener          net.Listener
-	endPauseTimer     *time.Timer
 }
 
 type CommandServerHandler interface {
@@ -51,9 +50,11 @@ type CommandServerHandler interface {
 
 func NewCommandServer(handler CommandServerHandler, platformInterface PlatformInterface) (*CommandServer, error) {
 	ctx := baseContext(platformInterface)
+	powerManager := powerreport.NewManager()
+	service.MustRegister[*powerreport.Manager](ctx, powerManager)
 	platformWrapper := &platformInterfaceWrapper{
-		iif:       platformInterface,
-		useProcFS: platformInterface.UseProcFS(),
+		iif:          platformInterface,
+		powerManager: powerManager,
 	}
 	service.MustRegister[adapter.PlatformInterface](ctx, platformWrapper)
 	server := &CommandServer{
@@ -61,6 +62,7 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		handler:           handler,
 		platformInterface: platformInterface,
 		platformWrapper:   platformWrapper,
+		powerManager:      powerManager,
 	}
 	server.StartedService = daemon.NewStartedService(daemon.ServiceOptions{
 		Context: ctx,
@@ -77,13 +79,21 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		// GroupID:          sGroupID,
 		// SystemProxyEnabled: false,
 	})
-	reporter := &oomReporter{startedService: server.StartedService}
-	service.MustRegister[oomkiller.OOMReporter](ctx, reporter)
+	oomRecorder := oomkiller.NewRecorder(OOMRecorderOptions(server.StartedService))
+	service.MustRegister[*oomkiller.Recorder](ctx, oomRecorder)
+	oomRecorder.Start()
+	server.oomRecorder = oomRecorder
 	server.managedService = daemon.NewManagedService(daemon.ManagedServiceOptions{
 		Handler:     (*platformHandler)(server),
 		Debug:       sDebug,
-		OOMReporter: reporter,
+		OOMRecorder: oomRecorder,
 	})
+	if sPowerReportEnabled {
+		err := powerManager.Start(PowerReportOptions(server.StartedService))
+		if err != nil {
+			log.StdLogger().Error(E.Cause(err, "start power report recorder"))
+		}
+	}
 	return server, nil
 }
 
@@ -131,19 +141,10 @@ func (s *CommandServer) Start() error {
 	if sCommandServerListenPort == 0 {
 		sockPath := filepath.Join(sBasePath, "command.sock")
 		os.Remove(sockPath)
-		for range 30 {
-			listener, err = net.ListenUnix("unix", &net.UnixAddr{
-				Name: sockPath,
-				Net:  "unix",
-			})
-			if err == nil {
-				break
-			}
-			if !errors.Is(err, syscall.EROFS) {
-				break
-			}
-			time.Sleep(time.Second)
-		}
+		listener, err = net.ListenUnix("unix", &net.UnixAddr{
+			Name: sockPath,
+			Net:  "unix",
+		})
 		if err != nil {
 			return E.Cause(err, "listen command server")
 		}
@@ -183,6 +184,8 @@ func (s *CommandServer) Close() {
 	}
 	common.Close(s.listener)
 	s.StartedService.Close()
+	s.oomRecorder.Close()
+	s.powerManager.Close()
 }
 
 type OverrideOptions struct {
@@ -193,6 +196,9 @@ type OverrideOptions struct {
 
 func (s *CommandServer) StartOrReloadService(configContent string, options *OverrideOptions) error {
 	saveConfigSnapshot(configContent)
+	if s.powerManager.Recorder() != nil {
+		copyConfigSnapshot(filepath.Join(sWorkingPath, powerreport.DraftDirectoryName))
+	}
 	err := s.StartedService.StartOrReloadService(s.ctx, configContent, &daemon.OverrideOptions{
 		AutoRedirect:   options.AutoRedirect,
 		IncludePackage: iteratorToArray(options.IncludePackage),
@@ -232,28 +238,51 @@ func (s *CommandServer) NeedFindProcess() bool {
 	return instance.Box().Router().NeedFindProcess()
 }
 
+// iOS wakes the extension for every push and background task, so wake is ignored there and
+// the pause ends on the screen state instead.
 func (s *CommandServer) Pause() {
-	instance := s.StartedService.Instance()
-	if instance == nil || instance.PauseManager() == nil {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordDeviceSleep()
+	}
+	if !(C.IsAndroid || C.IsIos) || C.IsTvOS {
 		return
 	}
-	instance.PauseManager().DevicePause()
-	if C.IsIos {
-		if s.endPauseTimer == nil {
-			s.endPauseTimer = time.AfterFunc(time.Minute, instance.PauseManager().DeviceWake)
-		} else {
-			s.endPauseTimer.Reset(time.Minute)
-		}
+	instance := s.StartedService.Instance()
+	if instance == nil || instance.Box() == nil || instance.PauseManager() == nil {
+		return
 	}
+	instance.Box().CloseIdleConnections()
+	instance.PauseManager().DevicePause()
 }
 
 func (s *CommandServer) Wake() {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordDeviceWake()
+	}
+	if !C.IsAndroid {
+		return
+	}
 	instance := s.StartedService.Instance()
 	if instance == nil || instance.PauseManager() == nil {
 		return
 	}
-	if !C.IsIos {
-		instance.PauseManager().DeviceWake()
+	instance.PauseManager().DeviceWake()
+}
+
+func (s *CommandServer) WakeNow() {
+	instance := s.StartedService.Instance()
+	if instance == nil || instance.PauseManager() == nil {
+		return
+	}
+	instance.PauseManager().DeviceWake()
+}
+
+func (s *CommandServer) RecordScreenState(on bool) {
+	recorder := s.powerManager.Recorder()
+	if recorder != nil {
+		recorder.RecordScreenState(on)
 	}
 }
 
@@ -270,7 +299,7 @@ func (s *CommandServer) UpdateWIFIState() {
 	if instance == nil || instance.Box() == nil {
 		return
 	}
-	instance.Box().Network().UpdateWIFIState()
+	instance.Box().Network().UpdateWIFIState(context.Background())
 }
 
 type platformHandler CommandServer

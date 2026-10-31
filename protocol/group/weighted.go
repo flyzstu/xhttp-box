@@ -2,6 +2,7 @@ package group
 
 import (
 	"context"
+	"io"
 	"net"
 	"slices"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/interrupt"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -52,6 +54,8 @@ type Weighted struct {
 	connection adapter.ConnectionManager
 	logger     log.ContextLogger
 	history    *urltest.HistoryStorage
+
+	interruptGroup *interrupt.Group
 
 	tags         []string
 	members      []*weightedMember
@@ -156,17 +160,18 @@ func NewWeighted(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	weighted := &Weighted{
-		Adapter:      outbound.NewAdapter(C.TypeWeighted, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
-		ctx:          ctx,
-		outbound:     service.FromContext[adapter.OutboundManager](ctx),
-		connection:   service.FromContext[adapter.ConnectionManager](ctx),
-		logger:       logger,
-		history:      service.PtrFromContext[urltest.HistoryStorage](ctx),
-		tags:         tags,
-		members:      members,
-		fallbackTag:  options.Fallback,
-		lastSelected: tags[0],
-		close:        make(chan struct{}),
+		Adapter:        outbound.NewAdapter(C.TypeWeighted, tag, []string{N.NetworkTCP, N.NetworkUDP}, dependencies),
+		ctx:            ctx,
+		outbound:       service.FromContext[adapter.OutboundManager](ctx),
+		connection:     service.FromContext[adapter.ConnectionManager](ctx),
+		logger:         logger,
+		history:        service.PtrFromContext[urltest.HistoryStorage](ctx),
+		interruptGroup: interrupt.NewGroup(),
+		tags:           tags,
+		members:        members,
+		fallbackTag:    options.Fallback,
+		lastSelected:   tags[0],
+		close:          make(chan struct{}),
 	}
 	if options.HealthCheck != nil && options.HealthCheck.Enabled {
 		health := options.HealthCheck
@@ -246,6 +251,29 @@ func (w *Weighted) Now() string {
 
 func (w *Weighted) All() []string {
 	return append([]string(nil), w.tags...)
+}
+
+func (w *Weighted) Selected(network string) adapter.Outbound {
+	w.access.Lock()
+	selected := w.lastSelected
+	var selectedOutbound adapter.Outbound
+	if selected != "" {
+		for _, member := range w.members {
+			if member.tag == selected && containsNetwork(member.outbound.Network(), network) {
+				selectedOutbound = member.outbound
+				break
+			}
+		}
+	}
+	if selectedOutbound == nil && w.fallback != nil && containsNetwork(w.fallback.Network(), network) {
+		selectedOutbound = w.fallback
+	}
+	w.access.Unlock()
+	return selectedOutbound
+}
+
+func (w *Weighted) AttachConnection(closer io.Closer) func() {
+	return w.interruptGroup.Add(closer, true)
 }
 
 func (w *Weighted) Status() []WeightedStatus {
@@ -361,7 +389,7 @@ func (w *Weighted) recordPassiveResult(member *weightedMember, err error) {
 	quarantined := member.state == weightedStateQuarantined
 	w.access.Unlock()
 	if quarantined && w.history != nil {
-		w.history.DeleteURLTestHistory(RealTag(member.outbound))
+		w.history.DeleteURLTestHistory(RealTag(member.outbound, N.NetworkTCP))
 	}
 }
 
@@ -436,7 +464,7 @@ func (w *Weighted) recordProbeResult(member *weightedMember, delay uint16, err e
 		w.recordFailureLocked(member, now)
 		w.access.Unlock()
 		if w.history != nil {
-			w.history.DeleteURLTestHistory(RealTag(member.outbound))
+			w.history.DeleteURLTestHistory(RealTag(member.outbound, N.NetworkTCP))
 		}
 		return
 	}
@@ -455,7 +483,7 @@ func (w *Weighted) recordProbeResult(member *weightedMember, delay uint16, err e
 	}
 	w.access.Unlock()
 	if w.history != nil {
-		w.history.StoreURLTestHistory(RealTag(member.outbound), &adapter.URLTestHistory{
+		w.history.StoreURLTestHistory(RealTag(member.outbound, N.NetworkTCP), &adapter.URLTestHistory{
 			Time:  now,
 			Delay: delay,
 		})

@@ -3,6 +3,7 @@ package trafficcontrol
 import (
 	"context"
 	"net"
+	"slices"
 	"sync/atomic"
 	"time"
 
@@ -37,15 +38,9 @@ func (m *Manager) RoutedConnection(ctx context.Context, conn net.Conn, metadata 
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
 	tracker := &connTracker{
-		ExtendedConn: bufio.NewCounterConn(conn, []N.CountFunc{func(n int64) {
-			upload.Add(n)
-			m.uploadTotal.Add(n)
-		}}, []N.CountFunc{func(n int64) {
-			download.Add(n)
-			m.downloadTotal.Add(n)
-		}}),
-		metadata: m.newTrackerMetadata(metadata, matchedRule, matchOutbound, upload, download),
-		manager:  m,
+		ExtendedConn: bufio.NewInt64CounterConn(conn, []*atomic.Int64{upload}, []*atomic.Int64{download}),
+		metadata:     m.newTrackerMetadata(metadata, matchedRule, matchOutbound, upload, download),
+		manager:      m,
 	}
 	m.join(tracker)
 	return tracker
@@ -55,15 +50,9 @@ func (m *Manager) RoutedPacketConnection(ctx context.Context, conn N.PacketConn,
 	upload := new(atomic.Int64)
 	download := new(atomic.Int64)
 	tracker := &packetConnTracker{
-		PacketConn: bufio.NewCounterPacketConn(conn, []N.CountFunc{func(n int64) {
-			upload.Add(n)
-			m.uploadTotal.Add(n)
-		}}, []N.CountFunc{func(n int64) {
-			download.Add(n)
-			m.downloadTotal.Add(n)
-		}}),
-		metadata: m.newTrackerMetadata(metadata, matchedRule, matchOutbound, upload, download),
-		manager:  m,
+		PacketConn: bufio.NewInt64CounterPacketConn(conn, []*atomic.Int64{upload}, nil, []*atomic.Int64{download}, nil),
+		metadata:   m.newTrackerMetadata(metadata, matchedRule, matchOutbound, upload, download),
+		manager:    m,
 	}
 	m.join(tracker)
 	return tracker
@@ -78,41 +67,19 @@ func (m *Manager) RoutedFlow(ctx context.Context, metadata adapter.InboundContex
 
 func (m *Manager) newTrackerMetadata(metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound, upload *atomic.Int64, download *atomic.Int64) TrackerMetadata {
 	id, _ := uuid.NewV4()
-	var (
-		chain        []string
-		next         string
-		outbound     string
-		outboundType string
-	)
-	if matchOutbound != nil {
-		next = matchOutbound.Tag()
-	} else {
-		next = m.outbound.Default().Tag()
-	}
-	for {
-		detour, loaded := m.outbound.Outbound(next)
-		if !loaded {
-			break
-		}
-		chain = append(chain, next)
-		outbound = detour.Tag()
-		outboundType = detour.Type()
-		outboundGroup, isGroup := detour.(adapter.OutboundGroup)
-		if !isGroup {
-			break
-		}
-		next = outboundGroup.Now()
-	}
+	chain := common.Map(metadata.OutboundChain, adapter.Outbound.Tag)
+	slices.Reverse(chain)
+	outbound := metadata.OutboundChain[len(metadata.OutboundChain)-1]
 	return TrackerMetadata{
 		ID:           id,
 		Metadata:     metadata,
 		CreatedAt:    time.Now(),
 		Upload:       upload,
 		Download:     download,
-		Chain:        common.Reverse(chain),
+		Chain:        chain,
 		Rule:         matchedRule,
-		Outbound:     outbound,
-		OutboundType: outboundType,
+		Outbound:     outbound.Tag(),
+		OutboundType: outbound.Type(),
 	}
 }
 
@@ -165,12 +132,10 @@ func (t *flowTracker) AttachFlow(handle tun.FlowHandle) {
 
 func (t *flowTracker) CountForward(n int) {
 	t.metadata.Upload.Add(int64(n))
-	t.manager.uploadTotal.Add(int64(n))
 }
 
 func (t *flowTracker) CountReverse(n int) {
 	t.metadata.Download.Add(int64(n))
-	t.manager.downloadTotal.Add(int64(n))
 }
 
 func (t *flowTracker) FlowEstablished() {

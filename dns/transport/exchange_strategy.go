@@ -2,8 +2,10 @@ package transport
 
 import (
 	"context"
+	"strings"
 	"sync"
 
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/buf"
 	E "github.com/sagernet/sing/common/exceptions"
 
@@ -80,60 +82,126 @@ type sequentialCallState struct {
 	continued bool
 }
 
-// ExchangeRace runs all exchangers concurrently; the first success wins and
-// cancels the rest, and when all fail the errors are aggregated.
-func ExchangeRace(ctx context.Context, exchangers []AsyncExchanger, callback func(response *mDNS.Msg, err error)) {
+func ExchangeParallel(ctx context.Context, exchangers []AsyncExchanger, accept func(response *mDNS.Msg, err error) bool, callback func(response *mDNS.Msg, err error)) {
 	if len(exchangers) == 0 {
 		callback(nil, E.New("missing exchangers"))
 		return
 	}
-	if len(exchangers) == 1 {
-		exchangers[0](ctx, callback)
-		return
-	}
-	raceCtx, raceCancel := context.WithCancel(ctx)
-	state := &raceState{
-		cancel:    raceCancel,
-		remaining: len(exchangers),
+	exchangeCtx, cancel := context.WithCancel(ctx)
+	parallel := &parallelExchange{
+		accept:    accept,
 		callback:  callback,
+		cancel:    cancel,
+		responses: make([]*mDNS.Msg, len(exchangers)),
+		errors:    make([]error, len(exchangers)),
+		pending:   len(exchangers),
 	}
-	for _, exchanger := range exchangers {
-		exchanger(raceCtx, state.complete)
+	for i, exchanger := range exchangers {
+		exchanger(exchangeCtx, func(response *mDNS.Msg, err error) {
+			parallel.complete(i, response, err)
+		})
 	}
 }
 
-type raceState struct {
+type parallelExchange struct {
 	access    sync.Mutex
-	done      bool
-	remaining int
-	errors    []error
-	cancel    context.CancelFunc
+	accept    func(response *mDNS.Msg, err error) bool
 	callback  func(response *mDNS.Msg, err error)
+	cancel    context.CancelFunc
+	responses []*mDNS.Msg
+	errors    []error
+	pending   int
+	completed bool
 }
 
-func (s *raceState) complete(response *mDNS.Msg, err error) {
-	s.access.Lock()
-	if s.done {
-		s.access.Unlock()
+func (p *parallelExchange) complete(index int, response *mDNS.Msg, err error) {
+	p.access.Lock()
+	if p.completed {
+		p.access.Unlock()
 		return
 	}
-	if err != nil {
-		s.errors = append(s.errors, err)
-		if len(s.errors) < s.remaining {
-			s.access.Unlock()
+	accepted := p.accept(response, err)
+	if !accepted {
+		p.responses[index] = response
+		p.errors[index] = err
+		p.pending--
+		if p.pending > 0 {
+			p.access.Unlock()
 			return
 		}
-		raceErrors := s.errors
-		s.done = true
-		s.access.Unlock()
-		s.cancel()
-		s.callback(nil, E.Errors(raceErrors...))
+	}
+	p.completed = true
+	p.access.Unlock()
+	p.cancel()
+	if accepted {
+		p.callback(response, err)
 		return
 	}
-	s.done = true
-	s.access.Unlock()
-	s.cancel()
-	s.callback(response, nil)
+	for i, finalResponse := range p.responses {
+		if p.errors[i] == nil {
+			p.callback(finalResponse, nil)
+			return
+		}
+	}
+	p.callback(nil, E.Errors(p.errors...))
+}
+
+func ExchangeNames(ctx context.Context, names []string, question mDNS.Question, exchangerFor func(fqdn string) AsyncExchanger, callback func(response *mDNS.Msg, err error)) {
+	if len(names) == 0 {
+		callback(nil, E.New("missing name candidates"))
+		return
+	}
+	search := &nameSearchExchange{question: question}
+	nameExchangers := common.Map(names, func(fqdn string) AsyncExchanger {
+		return search.wrap(fqdn, exchangerFor(fqdn))
+	})
+	ExchangeSequential(ctx, nameExchangers, func(response *mDNS.Msg, err error) bool {
+		return err == nil && response.Rcode != mDNS.RcodeNameError
+	}, func(response *mDNS.Msg, err error) {
+		if err != nil || response.Rcode == mDNS.RcodeNameError {
+			search.access.Lock()
+			nameErrorResponse := search.nameErrorResponse
+			search.access.Unlock()
+			if nameErrorResponse != nil {
+				response, err = nameErrorResponse, nil
+			}
+		}
+		callback(response, err)
+	})
+}
+
+type nameSearchExchange struct {
+	question          mDNS.Question
+	access            sync.Mutex
+	nameErrorResponse *mDNS.Msg
+}
+
+func (s *nameSearchExchange) wrap(fqdn string, exchanger AsyncExchanger) AsyncExchanger {
+	return func(ctx context.Context, callback func(response *mDNS.Msg, err error)) {
+		exchanger(ctx, func(response *mDNS.Msg, err error) {
+			if err == nil {
+				restoreOriginalQuestion(response, fqdn, s.question)
+				if response.Rcode == mDNS.RcodeNameError {
+					s.access.Lock()
+					if s.nameErrorResponse == nil || fqdn == s.question.Name {
+						s.nameErrorResponse = response
+					}
+					s.access.Unlock()
+				}
+			}
+			callback(response, err)
+		})
+	}
+}
+
+// Stub resolvers discard Answer RRs whose owner name does not match the question.
+func restoreOriginalQuestion(response *mDNS.Msg, fqdn string, question mDNS.Question) {
+	response.Question = []mDNS.Question{question}
+	for _, record := range response.Answer {
+		if strings.EqualFold(record.Header().Name, fqdn) {
+			record.Header().Name = question.Name
+		}
+	}
 }
 
 func NewFanOutRequest(message *mDNS.Msg, fqdn string, authenticatedData bool) *mDNS.Msg {

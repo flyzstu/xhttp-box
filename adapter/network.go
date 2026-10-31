@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ type NetworkManager interface {
 	UpdateInterfaces() error
 	DefaultNetworkInterface() *NetworkInterface
 	NetworkInterfaces() []NetworkInterface
+	NetworkEnvironment() uint64
 	AutoDetectInterface() bool
 	AutoDetectInterfaceFunc() control.Func
 	ProtectFunc() control.Func
@@ -31,8 +33,9 @@ type NetworkManager interface {
 	PackageManager() tun.PackageManager
 	NeedWIFIState() bool
 	WIFIState() WIFIState
-	UpdateWIFIState()
+	UpdateWIFIState(ctx context.Context)
 	ResetNetwork(ctx context.Context)
+	FlushSystemDNSCache()
 }
 
 type NetworkOptions struct {
@@ -48,6 +51,10 @@ type NetworkOptions struct {
 
 type InterfaceUpdateListener interface {
 	InterfaceUpdated(ctx context.Context)
+}
+
+type SystemDNSCacheFlusher interface {
+	FlushSystemDNSCache()
 }
 
 type WIFIState struct {
@@ -77,6 +84,7 @@ type NetworkInterface struct {
 	control.Interface
 	Type        C.InterfaceType
 	DNSServers  []string
+	Gateways    []netip.Addr
 	Expensive   bool
 	Constrained bool
 }

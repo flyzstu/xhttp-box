@@ -6,12 +6,14 @@ import (
 	"net/netip"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/iponly"
 	"github.com/sagernet/sing-box/common/listener"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -34,7 +36,6 @@ var (
 type ServerEndpoint struct {
 	endpointBase
 	ctx            context.Context
-	loopContext    context.Context
 	cancelLoop     context.CancelFunc
 	options        option.OpenVPNServerEndpointOptions
 	serverOptions  ovpn.ServerOptions
@@ -44,7 +45,6 @@ type ServerEndpoint struct {
 	device         ovpntransport.Device
 	localAddresses []netip.Prefix
 	started        atomic.Bool
-	readLoopDone   chan struct{}
 }
 
 type udpEgressPacketConn struct {
@@ -79,7 +79,6 @@ func NewServerEndpoint(ctx context.Context, router adapter.Router, logger log.Co
 			logger:  logger,
 		},
 		ctx:            ctx,
-		loopContext:    loopContext,
 		cancelLoop:     cancelLoop,
 		options:        options,
 		dnsRouter:      service.FromContext[adapter.DNSRouter](ctx),
@@ -160,7 +159,15 @@ func validateServerTopology(topology string) error {
 	}
 }
 
-func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
+func (s *ServerEndpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage == adapter.StartStateInitialize {
+		scope.Add(s.device.Close)
+		scope.Add(func() error {
+			s.cancelLoop()
+			return nil
+		})
+		return nil
+	}
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -224,6 +231,7 @@ func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return err
 	}
+	scope.Add(s.listener.Close)
 	serverOptions := s.serverOptions
 	if streamListener != nil {
 		serverOptions.Transport.ListenAddress = streamListener.Addr().String()
@@ -237,26 +245,31 @@ func (s *ServerEndpoint) Start(stage adapter.StartStage) error {
 		if packetConn != nil {
 			_ = packetConn.Close()
 		}
-		s.listener.Close()
 		return err
 	}
 	s.server = server
+	var loopGroup sync.WaitGroup
+	scope.Add(func() error {
+		loopGroup.Wait()
+		return nil
+	})
+	scope.Add(server.Close)
 	err = s.device.Start()
 	if err != nil {
-		s.listener.Close()
-		server.Close()
 		return err
 	}
 	err = server.Start()
 	if err != nil {
-		s.device.Close()
-		s.listener.Close()
-		server.Close()
 		return err
 	}
 	s.started.Store(true)
-	s.readLoopDone = make(chan struct{})
-	go s.readLoop()
+	scope.Add(func() error {
+		s.started.Store(false)
+		return nil
+	})
+	loopGroup.Go(func() {
+		s.readLoop(scope.Context())
+	})
 	return nil
 }
 
@@ -296,7 +309,7 @@ func buildServerOptions(options option.OpenVPNServerEndpointOptions) (ovpn.Serve
 	if options.TLS == nil {
 		return ovpn.ServerOptions{}, E.New("missing `tls` options")
 	}
-	if len(options.StaticKey) > 0 || options.StaticKeyPath != "" || options.KeyDirection != "" || options.Cipher != "" || options.Remote != "" || options.RemotePort != 0 || netip.Addr(options.PeerAddress).IsValid() || netip.Addr(options.PeerAddressIPv6).IsValid() {
+	if len(options.StaticKey) > 0 || options.StaticKeyPath != "" || options.KeyDirection != "" || options.Cipher != "" || options.Remote != "" || options.RemotePort != 0 || options.PeerAddress.Build(netip.Addr{}).IsValid() || options.PeerAddressIPv6.Build(netip.Addr{}).IsValid() {
 		return ovpn.ServerOptions{}, E.New("static-key server options require `mode: static_key`")
 	}
 	tlsOptions, keyDirection, err := buildServerTLSOptions(*options.TLS)
@@ -366,11 +379,11 @@ func buildStaticKeyServerOptions(options option.OpenVPNServerEndpointOptions, pr
 	if err != nil {
 		return ovpn.ServerOptions{}, err
 	}
-	vpnGateway := netip.Addr(options.PeerAddress)
+	vpnGateway := options.PeerAddress.Build(netip.Addr{})
 	if vpnGateway.IsValid() && !vpnGateway.Is4() {
 		return ovpn.ServerOptions{}, E.New("`peer_address` must be an IPv4 address")
 	}
-	vpnGatewayIPv6 := netip.Addr(options.PeerAddressIPv6)
+	vpnGatewayIPv6 := options.PeerAddressIPv6.Build(netip.Addr{})
 	if vpnGatewayIPv6.IsValid() && !vpnGatewayIPv6.Is6() {
 		return ovpn.ServerOptions{}, E.New("`peer_address_ipv6` must be an IPv6 address")
 	}
@@ -597,12 +610,11 @@ func applyServerPushOptions(serverOptions *ovpn.ServerOptions, options option.Op
 	return nil
 }
 
-func (s *ServerEndpoint) readLoop() {
-	defer close(s.readLoopDone)
+func (s *ServerEndpoint) readLoop(ctx context.Context) {
 	for {
-		serverPacketBuffers, err := s.server.ReadDataPackets(s.loopContext)
+		serverPacketBuffers, err := s.server.ReadDataPackets(ctx)
 		if err != nil {
-			if E.IsClosedOrCanceled(err) || s.loopContext.Err() != nil {
+			if E.IsClosedOrCanceled(err) || ctx.Err() != nil {
 				return
 			}
 			s.logger.Error(E.Cause(err, "server terminated"))
@@ -619,27 +631,6 @@ func (s *ServerEndpoint) readLoop() {
 			return
 		}
 	}
-}
-
-func (s *ServerEndpoint) Close() error {
-	s.started.Store(false)
-	s.cancelLoop()
-	var serverErr error
-	if s.server != nil {
-		serverErr = s.server.Close()
-	}
-	if s.readLoopDone != nil {
-		<-s.readLoopDone
-	}
-	var deviceErr error
-	if s.device != nil {
-		deviceErr = s.device.Close()
-	}
-	var listenerErr error
-	if s.listener != nil {
-		listenerErr = s.listener.Close()
-	}
-	return E.Errors(serverErr, deviceErr, listenerErr)
 }
 
 func (s *ServerEndpoint) PreMatchFlow(network string, destination netip.Addr) adapter.PreMatchAction {
@@ -753,16 +744,20 @@ func (s *ServerEndpoint) ListenPacketWithDestination(ctx context.Context, destin
 		if err != nil {
 			return nil, netip.Addr{}, err
 		}
-		return N.ListenSerial(ctx, s.device, destination, destinationAddresses)
+		packetConn, destinationAddress, err := N.ListenSerial(ctx, s.device, destination, destinationAddresses)
+		if err != nil {
+			return nil, netip.Addr{}, err
+		}
+		return iponly.NewPacketConn(s.logger, packetConn), destinationAddress, nil
 	}
 	packetConn, err := s.device.ListenPacket(ctx, destination)
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
 	if destination.IsIP() {
-		return packetConn, destination.Addr, nil
+		return iponly.NewPacketConn(s.logger, packetConn), destination.Addr, nil
 	}
-	return packetConn, netip.Addr{}, nil
+	return iponly.NewPacketConn(s.logger, packetConn), netip.Addr{}, nil
 }
 
 func (s *ServerEndpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

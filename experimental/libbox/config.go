@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"slices"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
@@ -30,7 +31,7 @@ func baseContext(platformInterface PlatformInterface) context.Context {
 	if platformInterface != nil {
 		if localTransport := platformInterface.LocalDNSTransport(); localTransport != nil {
 			dns.RegisterTransport[option.LocalDNSServerOptions](dnsRegistry, C.DNSTypeLocal, func(ctx context.Context, logger log.ContextLogger, tag string, options option.LocalDNSServerOptions) (adapter.DNSTransport, error) {
-				return newPlatformTransport(localTransport, tag, options), nil
+				return newPlatformTransport(ctx, logger, localTransport, tag, options)
 			})
 		}
 	}
@@ -127,7 +128,7 @@ func (s *platformInterfaceStub) UsePlatformWIFIMonitor() bool {
 	return false
 }
 
-func (s *platformInterfaceStub) ReadWIFIState() adapter.WIFIState {
+func (s *platformInterfaceStub) ReadWIFIState(ctx context.Context) adapter.WIFIState {
 	return adapter.WIFIState{}
 }
 
@@ -268,4 +269,14 @@ func FormatConfig(configContent string) (*StringBox, error) {
 		return nil, err
 	}
 	return wrapString(buffer.String()), nil
+}
+
+func HasTunInbound(configContent string) (bool, error) {
+	options, err := parseConfig(baseContext(nil), configContent)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(options.Inbounds, func(inbound option.Inbound) bool {
+		return inbound.Type == C.TypeTun
+	}), nil
 }

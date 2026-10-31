@@ -32,8 +32,8 @@ type TailscaleEndpointOptions struct {
 	SystemInterfaceName        string                     `json:"system_interface_name,omitempty"`
 	SystemInterfaceMTU         uint32                     `json:"system_interface_mtu,omitempty"`
 	UDPTimeout                 UDPTimeoutCompat           `json:"udp_timeout,omitempty"`
-	TaildropDirectory          string                     `json:"taildrop_directory,omitempty"`
 	SSHServer                  *TailscaleSSHServerOptions `json:"ssh_server,omitempty"`
+	TaildropDirectory          string                     `json:"taildrop_directory,omitempty"`
 }
 
 type _TailscaleSSHServerOptions struct {
@@ -164,17 +164,10 @@ type _DERPSTUNListenOptions struct {
 type DERPSTUNListenOptions _DERPSTUNListenOptions
 
 func (d DERPSTUNListenOptions) MarshalJSON() ([]byte, error) {
-	portOptions := _DERPSTUNListenOptions{
-		Enabled: d.Enabled,
-		ListenOptions: ListenOptions{
-			ListenPort: d.ListenPort,
-		},
+	if d.Enabled && d.ListenPort != 0 && d.ListenOptions == (ListenOptions{ListenPort: d.ListenPort}) {
+		return json.Marshal(d.ListenPort)
 	}
-	if _DERPSTUNListenOptions(d) == portOptions {
-		return json.Marshal(d.Enabled)
-	} else {
-		return json.Marshal(_DERPSTUNListenOptions(d))
-	}
+	return json.Marshal(_DERPSTUNListenOptions(d))
 }
 
 func (d *DERPSTUNListenOptions) UnmarshalJSON(bytes []byte) error {

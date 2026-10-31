@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/dialer"
 	"github.com/sagernet/sing-box/common/sniff"
 	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
@@ -19,7 +18,6 @@ import (
 	F "github.com/sagernet/sing/common/format"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 
 	"github.com/miekg/dns"
 )
@@ -45,7 +43,7 @@ func newRuleActionRouteOptions(options option.RawRouteOptionsActionOptions) (Rul
 	}, nil
 }
 
-func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action option.RuleAction) (adapter.RuleAction, error) {
+func NewRuleAction(logger logger.ContextLogger, action option.RuleAction) (adapter.RuleAction, error) {
 	switch action.Action {
 	case "":
 		return nil, nil
@@ -72,28 +70,6 @@ func NewRuleAction(ctx context.Context, logger logger.ContextLogger, action opti
 		return &RuleActionBypass{
 			Outbound:               action.BypassOptions.Outbound,
 			RuleActionRouteOptions: routeOptions,
-		}, nil
-	case C.RuleActionTypeDirect:
-		directDialer, err := dialer.New(ctx, option.DialerOptions{
-			AbstractDialerOptions: action.DirectOptions.AbstractDialerOptions,
-		}, false)
-		if err != nil {
-			return nil, err
-		}
-		var description string
-		descriptions := action.DirectOptions.Descriptions()
-		switch len(descriptions) {
-		case 0:
-		case 1:
-			description = F.ToString("(", descriptions[0], ")")
-		case 2:
-			description = F.ToString("(", descriptions[0], ",", descriptions[1], ")")
-		default:
-			description = F.ToString("(", descriptions[0], ",", descriptions[1], ",...)")
-		}
-		return &RuleActionDirect{
-			Dialer:      directDialer,
-			description: description,
 		}, nil
 	case C.RuleActionTypeReject:
 		return &RuleActionReject{
@@ -139,6 +115,7 @@ func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) 
 				DisableOptimisticCache: action.RouteOptions.DisableOptimisticCache,
 				RewriteTTL:             action.RouteOptions.RewriteTTL,
 				ClientSubnet:           netip.Prefix(common.PtrValueOrDefault(action.RouteOptions.ClientSubnet)),
+				RemoveClientSubnet:     action.RouteOptions.RemoveClientSubnet,
 			},
 		}
 	case C.RuleActionTypeEvaluate:
@@ -153,6 +130,7 @@ func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) 
 				DisableOptimisticCache: action.EvaluateOptions.DisableOptimisticCache,
 				RewriteTTL:             action.EvaluateOptions.RewriteTTL,
 				ClientSubnet:           netip.Prefix(common.PtrValueOrDefault(action.EvaluateOptions.ClientSubnet)),
+				RemoveClientSubnet:     action.EvaluateOptions.RemoveClientSubnet,
 			},
 		}
 	case C.RuleActionTypeRespond:
@@ -165,6 +143,7 @@ func NewDNSRuleAction(logger logger.ContextLogger, action option.DNSRuleAction) 
 			DisableOptimisticCache: action.RouteOptionsOptions.DisableOptimisticCache,
 			RewriteTTL:             action.RouteOptionsOptions.RewriteTTL,
 			ClientSubnet:           netip.Prefix(common.PtrValueOrDefault(action.RouteOptionsOptions.ClientSubnet)),
+			RemoveClientSubnet:     action.RouteOptionsOptions.RemoveClientSubnet,
 		}
 	case C.RuleActionTypeReject:
 		return &RuleActionReject{
@@ -349,6 +328,9 @@ func formatDNSRouteAction(action string, server string, speculative bool, option
 	if options.ClientSubnet.IsValid() {
 		descriptions = append(descriptions, F.ToString("client-subnet=", options.ClientSubnet))
 	}
+	if options.RemoveClientSubnet {
+		descriptions = append(descriptions, "remove-client-subnet")
+	}
 	return F.ToString(action, "(", strings.Join(descriptions, ","), ")")
 }
 
@@ -359,6 +341,7 @@ type RuleActionDNSRouteOptions struct {
 	DisableOptimisticCache bool
 	RewriteTTL             *uint32
 	ClientSubnet           netip.Prefix
+	RemoveClientSubnet     bool
 }
 
 func (r *RuleActionDNSRouteOptions) Type() string {
@@ -382,20 +365,10 @@ func (r *RuleActionDNSRouteOptions) String() string {
 	if r.ClientSubnet.IsValid() {
 		descriptions = append(descriptions, F.ToString("client-subnet=", r.ClientSubnet))
 	}
+	if r.RemoveClientSubnet {
+		descriptions = append(descriptions, "remove-client-subnet")
+	}
 	return F.ToString("route-options(", strings.Join(descriptions, ","), ")")
-}
-
-type RuleActionDirect struct {
-	Dialer      N.Dialer
-	description string
-}
-
-func (r *RuleActionDirect) Type() string {
-	return C.RuleActionTypeDirect
-}
-
-func (r *RuleActionDirect) String() string {
-	return "direct" + r.description
 }
 
 var (

@@ -6,6 +6,8 @@ import (
 	"context"
 	"net/netip"
 	"os"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -34,6 +36,7 @@ func RegisterTransport(registry *dns.TransportRegistry) {
 var (
 	_ adapter.DNSTransport                    = (*Transport)(nil)
 	_ adapter.DNSTransportWithPreferredDomain = (*Transport)(nil)
+	_ adapter.DNSTransportWithEnvironment     = (*Transport)(nil)
 )
 
 type Transport struct {
@@ -55,6 +58,7 @@ type LinkServers struct {
 	Link         *TransportLink
 	Servers      []adapter.DNSTransport
 	serverOffset uint32
+	serverScope  *adapter.Scope
 }
 
 func (c *LinkServers) ServerOffset(rotate bool) uint32 {
@@ -82,7 +86,7 @@ func NewTransport(ctx context.Context, logger log.ContextLogger, tag string, opt
 	}, nil
 }
 
-func (t *Transport) Start(stage adapter.StartStage) error {
+func (t *Transport) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateInitialize {
 		return nil
 	}
@@ -98,17 +102,14 @@ func (t *Transport) Start(stage adapter.StartStage) error {
 	resolvedInbound.updateCallback = t.updateTransports
 	resolvedInbound.deleteCallback = t.deleteTransport
 	t.service = resolvedInbound
-	return nil
-}
-
-func (t *Transport) Close() error {
-	t.linkAccess.RLock()
-	defer t.linkAccess.RUnlock()
-	for _, servers := range t.linkServers {
-		for _, server := range servers.Servers {
-			server.Close()
+	scope.Add(func() error {
+		t.linkAccess.RLock()
+		defer t.linkAccess.RUnlock()
+		for _, servers := range t.linkServers {
+			servers.serverScope.Close()
 		}
-	}
+		return nil
+	})
 	return nil
 }
 
@@ -122,13 +123,53 @@ func (t *Transport) Reset() {
 	}
 }
 
+func (t *Transport) Environment() []string {
+	if t.service == nil {
+		return nil
+	}
+	t.service.linkAccess.RLock()
+	defer t.service.linkAccess.RUnlock()
+	linkIndexes := make([]int32, 0, len(t.service.links))
+	for linkIndex := range t.service.links {
+		linkIndexes = append(linkIndexes, linkIndex)
+	}
+	slices.Sort(linkIndexes)
+	var environment []string
+	for _, linkIndex := range linkIndexes {
+		link := t.service.links[linkIndex]
+		linkEntry := "link:" + strconv.Itoa(int(linkIndex))
+		if link.dnsOverTLS {
+			linkEntry += ":tls"
+		}
+		environment = append(environment, linkEntry)
+		for _, address := range link.address {
+			serverAddr, ok := netip.AddrFromSlice(address.Address)
+			if ok {
+				environment = append(environment, serverAddr.String())
+			}
+		}
+		for _, address := range link.addressEx {
+			serverAddr, ok := netip.AddrFromSlice(address.Address)
+			if ok {
+				environment = append(environment, M.SocksaddrFrom(serverAddr, address.Port).String()+"/"+address.Name)
+			}
+		}
+		for _, domain := range link.domain {
+			if domain.RoutingOnly {
+				environment = append(environment, "routing-only:"+domain.Domain)
+			} else {
+				environment = append(environment, domain.Domain)
+			}
+		}
+	}
+	return environment
+}
+
 func (t *Transport) updateTransports(link *TransportLink) error {
 	t.linkAccess.Lock()
 	defer t.linkAccess.Unlock()
 	if servers, loaded := t.linkServers[link]; loaded {
-		for _, server := range servers.Servers {
-			server.Close()
-		}
+		servers.serverScope.Close()
 	}
 	serverDialer := common.Must1(dialer.NewDefault(t.ctx, option.DialerOptions{
 		AbstractDialerOptions: option.AbstractDialerOptions{
@@ -147,7 +188,7 @@ func (t *Transport) updateTransports(link *TransportLink) error {
 				Enabled:    true,
 				ServerName: serverAddr.String(),
 			}))
-			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, 53), tlsConfig))
+			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, 853), tlsConfig))
 
 		} else {
 			transports = append(transports, transport.NewUDPRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, 53)))
@@ -158,7 +199,11 @@ func (t *Transport) updateTransports(link *TransportLink) error {
 		if !ok {
 			return os.ErrInvalid
 		}
+		serverPort := address.Port
 		if link.dnsOverTLS {
+			if serverPort == 0 {
+				serverPort = 853
+			}
 			var serverName string
 			if address.Name != "" {
 				serverName = address.Name
@@ -169,15 +214,26 @@ func (t *Transport) updateTransports(link *TransportLink) error {
 				Enabled:    true,
 				ServerName: serverName,
 			}))
-			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, address.Port), tlsConfig))
+			transports = append(transports, transport.NewTLSRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, serverPort), tlsConfig))
 
 		} else {
-			transports = append(transports, transport.NewUDPRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, address.Port)))
+			if serverPort == 0 {
+				serverPort = 53
+			}
+			transports = append(transports, transport.NewUDPRaw(t.logger, t.TransportAdapter, serverDialer, M.SocksaddrFrom(serverAddr, serverPort)))
+		}
+	}
+	serverScope := adapter.NewScope(t.ctx, t.logger)
+	for _, serverTransport := range transports {
+		err := serverTransport.Start(adapter.StartStateStart, serverScope)
+		if err != nil {
+			return E.Errors(err, serverScope.Close())
 		}
 	}
 	t.linkServers[link] = &LinkServers{
-		Link:    link,
-		Servers: transports,
+		Link:        link,
+		Servers:     transports,
+		serverScope: serverScope,
 	}
 	return nil
 }
@@ -189,9 +245,7 @@ func (t *Transport) deleteTransport(link *TransportLink) {
 	if !loaded {
 		return
 	}
-	for _, server := range servers.Servers {
-		server.Close()
-	}
+	servers.serverScope.Close()
 	delete(t.linkServers, link)
 }
 
@@ -203,7 +257,7 @@ func (t *Transport) PreferredDomain(domain string) bool {
 			if linkDomain.Domain == "." {
 				continue
 			}
-			if mDNS.IsSubDomain(linkDomain.Domain, domain) {
+			if mDNS.IsSubDomain(mDNS.Fqdn(linkDomain.Domain), domain) {
 				return true
 			}
 		}
@@ -228,15 +282,25 @@ func (t *Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg,
 
 func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error)) {
 	question := message.Question[0]
-	var selectedLink *TransportLink
+	var (
+		selectedLink   *TransportLink
+		selectedLabels int
+		names          []string
+	)
 	t.service.linkAccess.RLock()
 	for _, link := range t.service.links {
 		for _, domain := range link.domain {
 			if domain.Domain == "." && domain.RoutingOnly && !t.acceptDefaultResolvers {
 				continue
 			}
-			if mDNS.IsSubDomain(domain.Domain, question.Name) {
+			domainName := mDNS.Fqdn(domain.Domain)
+			if !mDNS.IsSubDomain(domainName, question.Name) {
+				continue
+			}
+			labels := mDNS.CountLabel(domainName)
+			if selectedLink == nil || labels > selectedLabels {
 				selectedLink = link
+				selectedLabels = labels
 			}
 		}
 	}
@@ -247,6 +311,9 @@ func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 				break
 			}
 		}
+	}
+	if selectedLink != nil {
+		names = selectedLink.nameList(t.ndots, question.Name)
 	}
 	t.service.linkAccess.RUnlock()
 	if selectedLink == nil {
@@ -260,20 +327,13 @@ func (t *Transport) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callba
 		callback(dns.FixedResponseStatus(message, mDNS.RcodeNameError), nil)
 		return
 	}
-	names := servers.Link.nameList(t.ndots, question.Name)
 	if len(names) == 0 {
 		callback(nil, E.New("invalid domain: ", question.Name))
 		return
 	}
-	nameExchangers := make([]transport.AsyncExchanger, 0, len(names))
-	for _, fqdn := range names {
-		nameExchangers = append(nameExchangers, t.newNameExchanger(servers, message, fqdn))
-	}
-	if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA {
-		transport.ExchangeRace(ctx, nameExchangers, callback)
-	} else {
-		transport.ExchangeSequential(ctx, nameExchangers, nil, callback)
-	}
+	transport.ExchangeNames(ctx, names, question, func(fqdn string) transport.AsyncExchanger {
+		return t.newNameExchanger(servers, message, fqdn)
+	}, callback)
 }
 
 func (t *Transport) newNameExchanger(servers *LinkServers, message *mDNS.Msg, fqdn string) transport.AsyncExchanger {

@@ -10,6 +10,6 @@ type ResolvedResolver interface {
 	Start() error
 	Close() error
 	Reset()
-	Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error)
+	Environment() []string
 	ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback func(response *mDNS.Msg, err error))
 }

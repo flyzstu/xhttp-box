@@ -81,7 +81,7 @@ func (o OptimisticDNSOptions) MarshalJSON() ([]byte, error) {
 	if o.Timeout == 0 {
 		return json.Marshal(o.Enabled)
 	}
-	return json.Marshal((_OptimisticDNSOptions)(o))
+	return json.Marshal(_OptimisticDNSOptions(o))
 }
 
 func (o *OptimisticDNSOptions) UnmarshalJSON(bytes []byte) error {
@@ -210,7 +210,7 @@ type RemoteHTTPSDNSServerOptions struct {
 
 type FakeIPDNSServerOptions struct {
 	Inet4Range *badoption.Prefix `json:"inet4_range,omitempty" examples:"198.18.0.0/15"`
-	Inet6Range *badoption.Prefix `json:"inet6_range,omitempty" examples:"fc00::/18"`
+	Inet6Range *badoption.Prefix `json:"inet6_range,omitempty" examples:"2001:2::/48"`
 }
 
 type DHCPDNSServerOptions struct {

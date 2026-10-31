@@ -70,7 +70,7 @@ func NewTProxy(ctx context.Context, router adapter.Router, logger log.ContextLog
 	return tproxy, nil
 }
 
-func (t *TProxy) Start(stage adapter.StartStage) error {
+func (t *TProxy) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -78,20 +78,17 @@ func (t *TProxy) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return err
 	}
+	scope.Add(t.udpNat.Close)
 	err = t.listener.Start()
 	if err != nil {
-		_ = t.udpNat.Close()
+		return err
 	}
-	return err
+	scope.Add(t.listener.Close)
+	return nil
 }
 
 func (t *TProxy) InterfaceUpdated(ctx context.Context) {
 	t.udpNat.Purge()
-}
-
-func (t *TProxy) Close() error {
-	_ = t.udpNat.Close()
-	return t.listener.Close()
 }
 
 func (t *TProxy) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
@@ -146,15 +143,13 @@ type tproxyPacketWriter struct {
 
 func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	defer buffer.Release()
-	if w.listener.ListenOptions().NetNs == "" {
-		conn := w.conn
-		if w.destination == destination && conn != nil {
-			_, err := conn.WriteToUDPAddrPort(buffer.Bytes(), w.source)
-			if err != nil {
-				w.conn = nil
-			}
-			return err
+	conn := w.conn
+	if w.destination == destination && conn != nil {
+		_, err := conn.WriteToUDPAddrPort(buffer.Bytes(), w.source)
+		if err != nil {
+			w.conn = nil
 		}
+		return err
 	}
 	var listenConfig net.ListenConfig
 	listenConfig.Control = control.Append(listenConfig.Control, control.ReuseAddr())
@@ -164,7 +159,7 @@ func (w *tproxyPacketWriter) WritePacket(buffer *buf.Buffer, destination M.Socks
 		return err
 	}
 	udpConn := packetConn.(*net.UDPConn)
-	if w.listener.ListenOptions().NetNs == "" && w.destination == destination {
+	if w.destination == destination {
 		w.conn = udpConn
 	} else {
 		defer udpConn.Close()

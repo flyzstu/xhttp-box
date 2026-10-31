@@ -16,6 +16,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	R "github.com/sagernet/sing-box/route/rule"
+	"github.com/sagernet/sing-box/service/powerreport"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -39,6 +40,7 @@ type Router struct {
 	logger                logger.ContextLogger
 	transport             adapter.DNSTransportManager
 	outbound              adapter.OutboundManager
+	powerManager          *powerreport.Manager
 	client                adapter.DNSClient
 	rawRules              []option.DNSRule
 	rules                 []adapter.DNSRule
@@ -57,6 +59,7 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.DNSOp
 		logger:                logFactory.NewLogger("dns"),
 		transport:             service.FromContext[adapter.DNSTransportManager](ctx),
 		outbound:              service.FromContext[adapter.OutboundManager](ctx),
+		powerManager:          service.FromContext[*powerreport.Manager](ctx),
 		rawRules:              make([]option.DNSRule, 0, len(options.Rules)),
 		rules:                 make([]adapter.DNSRule, 0, len(options.Rules)),
 		defaultDomainStrategy: C.DomainStrategy(options.Strategy),
@@ -126,10 +129,19 @@ func (r *Router) Initialize(rules []option.DNSRule) error {
 	return nil
 }
 
-func (r *Router) Start(stage adapter.StartStage) error {
+func (r *Router) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	monitor := taskmonitor.New(r.logger, C.StartTimeout)
 	switch stage {
 	case adapter.StartStateStart:
+		scope.Add(func() error {
+			r.rulesAccess.Lock()
+			r.closing = true
+			runtimeRules := r.rules
+			r.rules = nil
+			r.rulesAccess.Unlock()
+			closeRules(runtimeRules)
+			return nil
+		})
 		monitor.Start("initialize DNS client")
 		r.client.Start()
 		monitor.Finish()
@@ -157,20 +169,6 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			deprecated.Report(r.ctx, deprecated.OptionLegacyDNSRuleStrategy)
 		}
 	}
-	return nil
-}
-
-func (r *Router) Close() error {
-	r.rulesAccess.Lock()
-	if r.closing {
-		r.rulesAccess.Unlock()
-		return nil
-	}
-	r.closing = true
-	runtimeRules := r.rules
-	r.rules = nil
-	r.rulesAccess.Unlock()
-	closeRules(runtimeRules)
 	return nil
 }
 
@@ -334,6 +332,11 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
+					options.RemoveClientSubnet = false
+				}
+				if action.RemoveClientSubnet {
+					options.ClientSubnet = netip.Prefix{}
+					options.RemoveClientSubnet = true
 				}
 				return transport, currentRule, currentRuleIndex
 			case *R.RuleActionDNSRouteOptions:
@@ -351,6 +354,11 @@ func (r *Router) matchDNS(ctx context.Context, rules []adapter.DNSRule, allowFak
 				}
 				if action.ClientSubnet.IsValid() {
 					options.ClientSubnet = action.ClientSubnet
+					options.RemoveClientSubnet = false
+				}
+				if action.RemoveClientSubnet {
+					options.ClientSubnet = netip.Prefix{}
+					options.RemoveClientSubnet = true
 				}
 			case *R.RuleActionReject:
 				return nil, currentRule, currentRuleIndex
@@ -381,6 +389,11 @@ func (r *Router) applyDNSRouteOptions(options *adapter.DNSQueryOptions, routeOpt
 	}
 	if routeOptions.ClientSubnet.IsValid() {
 		options.ClientSubnet = routeOptions.ClientSubnet
+		options.RemoveClientSubnet = false
+	}
+	if routeOptions.RemoveClientSubnet {
+		options.ClientSubnet = netip.Prefix{}
+		options.RemoveClientSubnet = true
 	}
 }
 
@@ -953,6 +966,8 @@ func (r *Router) resolveLookupStrategy(options adapter.DNSQueryOptions) C.Domain
 func withLookupQueryMetadata(ctx context.Context, qType uint16) context.Context {
 	ctx, metadata := adapter.ExtendContext(ctx)
 	metadata.QueryType = qType
+	metadata.QueryClientSubnet = netip.Prefix{}
+	metadata.QueryDNSSEC = false
 	metadata.IPVersion = 0
 	switch qType {
 	case mDNS.TypeA:
@@ -1044,6 +1059,16 @@ type dnsExchangeContext struct {
 }
 
 func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsExchangeContext, *mDNS.Msg, error) {
+	if r.powerManager != nil {
+		recorder := r.powerManager.Recorder()
+		if recorder != nil {
+			var domain string
+			if len(message.Question) == 1 {
+				domain = message.Question[0].Name
+			}
+			recorder.CountDNSQuery(domain)
+		}
+	}
 	if len(message.Question) != 1 {
 		r.logger.WarnContext(ctx, "bad question size: ", len(message.Question))
 		return nil, &mDNS.Msg{
@@ -1051,6 +1076,19 @@ func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsEx
 				Id:       message.Id,
 				Response: true,
 				Rcode:    mDNS.RcodeFormatError,
+			},
+			Question: message.Question,
+		}, nil
+	}
+	if isResolverDiscoveryQuery(message.Question[0]) {
+		r.logger.DebugContext(ctx, "rejected resolver discovery query ", FormatQuestion(message.Question[0].String()))
+		return nil, &mDNS.Msg{
+			MsgHdr: mDNS.MsgHdr{
+				Id:                 message.Id,
+				Response:           true,
+				RecursionDesired:   message.RecursionDesired,
+				RecursionAvailable: true,
+				Rcode:              mDNS.RcodeSuccess,
 			},
 			Question: message.Question,
 		}, nil
@@ -1077,6 +1115,9 @@ func (r *Router) prepareExchange(ctx context.Context, message *mDNS.Msg) (*dnsEx
 		metadata.IPVersion = 6
 	}
 	metadata.Domain = FqdnToDomain(message.Question[0].Name)
+	metadata.QueryClientSubnet = clientSubnetFromMessage(message)
+	edns0Option := message.IsEdns0()
+	metadata.QueryDNSSEC = edns0Option != nil && edns0Option.Do()
 	return &dnsExchangeContext{
 		ctx:           ctx,
 		rules:         rules,
@@ -1314,6 +1355,10 @@ response:
 	return responseAddrs, err
 }
 
+func isResolverDiscoveryQuery(question mDNS.Question) bool {
+	return question.Qtype == mDNS.TypeSVCB && len(question.Name) > 5 && strings.EqualFold(question.Name[:5], "_dns.")
+}
+
 func isAddressQuery(message *mDNS.Msg) bool {
 	for _, question := range message.Question {
 		if question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA || question.Qtype == mDNS.TypeHTTPS {
@@ -1339,6 +1384,7 @@ func (r *Router) ClearCache() {
 	if r.platformInterface != nil {
 		r.platformInterface.ClearDNSCache()
 	}
+	service.FromContext[adapter.NetworkManager](r.ctx).FlushSystemDNSCache()
 	if r.dnsReverseMapping != nil {
 		r.dnsReverseMapping.Purge()
 	}
@@ -1353,7 +1399,6 @@ func (r *Router) LookupReverseMapping(ip netip.Addr) (string, bool) {
 }
 
 func (r *Router) ResetNetwork() {
-	r.ClearCache()
 	for _, transport := range r.transport.Transports() {
 		transport.Reset()
 	}

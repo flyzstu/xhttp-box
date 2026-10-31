@@ -244,7 +244,6 @@ func (s *StartedService) StartTailscaleSSHSession(
 	})
 
 	pumpReader := func(reader io.Reader) {
-		defer workersWg.Done()
 		buffer := buf.Get(buf.BufferSize)
 		defer buf.Put(buffer)
 		for {
@@ -259,10 +258,8 @@ func (s *StartedService) StartTailscaleSSHSession(
 			}
 		}
 	}
-	workersWg.Add(1)
-	go pumpReader(stdout)
-	workersWg.Add(1)
-	go pumpReader(stderr)
+	workersWg.Go(func() { pumpReader(stdout) })
+	workersWg.Go(func() { pumpReader(stderr) })
 
 	workersWg.Go(func() {
 		ticker := time.NewTicker(30 * time.Second)

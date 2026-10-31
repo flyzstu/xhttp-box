@@ -32,11 +32,14 @@ func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.SSHOutboundOptions](registry, C.TypeSSH, NewOutbound)
 }
 
-var _ adapter.InterfaceUpdateListener = (*Outbound)(nil)
+var (
+	_ adapter.InterfaceUpdateListener = (*Outbound)(nil)
+	_ adapter.IdleConnectionKeeper    = (*Outbound)(nil)
+	_ adapter.OutboundWithMultiplex   = (*Outbound)(nil)
+)
 
 type Outbound struct {
 	outbound.Adapter
-	ctx               context.Context
 	logger            logger.ContextLogger
 	dialer            N.Dialer
 	serverAddr        M.Socksaddr
@@ -51,6 +54,8 @@ type Outbound struct {
 	clientAccess      sync.Mutex
 	clientConn        net.Conn
 	client            *ssh.Client
+	streams           int
+	closeIdle         bool
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SSHOutboundOptions) (adapter.Outbound, error) {
@@ -60,7 +65,6 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 	outbound := &Outbound{
 		Adapter:           outbound.NewAdapterWithDialerOptions(C.TypeSSH, tag, []string{N.NetworkTCP}, options.DialerOptions),
-		ctx:               ctx,
 		logger:            logger,
 		dialer:            outboundDialer,
 		serverAddr:        options.ServerOptions.Build(),
@@ -128,21 +132,32 @@ func randomVersion() string {
 	return version
 }
 
-func (s *Outbound) connect() (*ssh.Client, error) {
-	if s.client != nil {
-		return s.client, nil
-	}
-
+func (s *Outbound) connect(ctx context.Context) (client *ssh.Client, err error) {
 	s.clientAccess.Lock()
 	defer s.clientAccess.Unlock()
 
 	if s.client != nil {
+		s.streams++
 		return s.client, nil
 	}
 
-	conn, err := s.dialer.DialContext(s.ctx, N.NetworkTCP, s.serverAddr)
+	conn, err := s.dialer.DialContext(adapter.ContextForMultiplexSession(ctx), N.NetworkTCP, s.serverAddr)
 	if err != nil {
 		return nil, err
+	}
+	if ctx.Done() != nil {
+		handshakeConn := conn
+		stopContext := context.AfterFunc(ctx, func() {
+			_ = handshakeConn.Close()
+		})
+		defer func() {
+			if !stopContext() {
+				s.client = nil
+				s.clientConn = nil
+				client = nil
+				err = ctx.Err()
+			}
+		}()
 	}
 	config := &ssh.ClientConfig{
 		User:              s.user,
@@ -177,17 +192,20 @@ func (s *Outbound) connect() (*ssh.Client, error) {
 		return nil, E.Cause(err, "connect to ssh server")
 	}
 
-	client := ssh.NewClient(clientConn, chans, reqs)
+	client = ssh.NewClient(clientConn, chans, reqs)
 
 	s.clientConn = conn
 	s.client = client
+	s.streams = 1
 
 	go func() {
 		client.Wait()
 		conn.Close()
 		s.clientAccess.Lock()
-		s.client = nil
-		s.clientConn = nil
+		if s.client == client {
+			s.client = nil
+			s.clientConn = nil
+		}
 		s.clientAccess.Unlock()
 	}()
 
@@ -198,20 +216,72 @@ func (s *Outbound) InterfaceUpdated(ctx context.Context) {
 	common.Close(s.clientConn)
 }
 
-func (s *Outbound) Close() error {
-	return common.Close(s.clientConn)
+func (s *Outbound) MultiplexEnabled() bool {
+	return true
+}
+
+func (s *Outbound) SetKeepIdleConnections(keep bool) {
+	s.clientAccess.Lock()
+	s.closeIdle = !keep
+	s.clientAccess.Unlock()
+	if !keep {
+		s.CloseIdleConnections()
+	}
+}
+
+func (s *Outbound) CloseIdleConnections() {
+	s.clientAccess.Lock()
+	if s.client == nil || s.streams > 0 {
+		s.clientAccess.Unlock()
+		return
+	}
+	clientConn := s.clientConn
+	s.client = nil
+	s.clientConn = nil
+	s.clientAccess.Unlock()
+	common.Close(clientConn)
+}
+
+func (s *Outbound) releaseStream(client *ssh.Client, keepSession bool) {
+	s.clientAccess.Lock()
+	if s.client != client {
+		s.clientAccess.Unlock()
+		return
+	}
+	s.streams--
+	if !s.closeIdle || keepSession || s.streams > 0 {
+		s.clientAccess.Unlock()
+		return
+	}
+	clientConn := s.clientConn
+	s.client = nil
+	s.clientConn = nil
+	s.clientAccess.Unlock()
+	common.Close(clientConn)
+}
+
+func (s *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		return common.Close(s.clientConn)
+	})
+	return nil
 }
 
 func (s *Outbound) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
-	client, err := s.connect()
+	client, err := s.connect(ctx)
 	if err != nil {
 		return nil, err
 	}
 	conn, err := client.Dial(network, destination.String())
 	if err != nil {
+		s.releaseStream(client, false)
 		return nil, err
 	}
-	return &chanConnWrapper{Conn: conn}, nil
+	keepSession := adapter.KeepSessionFromContext(ctx)
+	return &chanConnWrapper{Conn: conn, onClose: func() { s.releaseStream(client, keepSession) }}, nil
 }
 
 func (s *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
@@ -220,6 +290,14 @@ func (s *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 
 type chanConnWrapper struct {
 	net.Conn
+	closeOnce sync.Once
+	onClose   func()
+}
+
+func (c *chanConnWrapper) Close() error {
+	err := c.Conn.Close()
+	c.closeOnce.Do(c.onClose)
+	return err
 }
 
 func (c *chanConnWrapper) SetDeadline(t time.Time) error {

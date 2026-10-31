@@ -5,30 +5,22 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/dns"
 	"github.com/sagernet/sing-box/dns/transport"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	mDNS "github.com/miekg/dns"
 )
 
-func (t *Transport) exchangeWithTransports(ctx context.Context, message *mDNS.Msg, serverTransports []adapter.DNSTransport, callback func(response *mDNS.Msg, err error)) {
+func (t *Transport) exchangeWithTransports(ctx context.Context, message *mDNS.Msg, state *transportState, callback func(response *mDNS.Msg, err error)) {
 	question := message.Question[0]
-	domain := dns.FqdnToDomain(question.Name)
-	names := t.nameList(domain)
+	names := nameList(state.search, question.Name)
 	if len(names) == 0 {
-		callback(nil, E.New("invalid domain: ", domain))
+		callback(nil, E.New("invalid domain: ", question.Name))
 		return
 	}
-	nameExchangers := make([]transport.AsyncExchanger, 0, len(names))
-	for _, fqdn := range names {
-		nameExchangers = append(nameExchangers, t.newNameExchanger(message, fqdn, serverTransports))
-	}
-	if len(serverTransports) == 1 || !(question.Qtype == mDNS.TypeA || question.Qtype == mDNS.TypeAAAA) {
-		transport.ExchangeSequential(ctx, nameExchangers, nil, callback)
-	} else {
-		transport.ExchangeRace(ctx, nameExchangers, callback)
-	}
+	transport.ExchangeNames(ctx, names, question, func(fqdn string) transport.AsyncExchanger {
+		return t.newNameExchanger(message, fqdn, state.serverTransports)
+	}, callback)
 }
 
 func (t *Transport) newNameExchanger(message *mDNS.Msg, fqdn string, serverTransports []adapter.DNSTransport) transport.AsyncExchanger {
@@ -50,38 +42,21 @@ func (t *Transport) newNameExchanger(message *mDNS.Msg, fqdn string, serverTrans
 	}
 }
 
-func (t *Transport) nameList(name string) []string {
-	l := len(name)
-	rooted := l > 0 && name[l-1] == '.'
-	if l > 254 || l == 254 && !rooted {
+func nameList(search []string, name string) []string {
+	if len(name) > 254 || avoidDNS(name) {
 		return nil
 	}
-
-	if rooted {
-		if avoidDNS(name) {
-			return nil
-		}
+	if mDNS.CountLabel(name) != 1 {
 		return []string{name}
 	}
-
-	hasNdots := strings.Count(name, ".") >= t.ndots
-	name += "."
-	// l++
-
-	names := make([]string, 0, 1+len(t.search))
-	if hasNdots && !avoidDNS(name) {
-		names = append(names, name)
-	}
-	for _, suffix := range t.search {
+	names := make([]string, 0, len(search)+1)
+	for _, suffix := range search {
 		fqdn := name + suffix
 		if !avoidDNS(fqdn) && len(fqdn) <= 254 {
 			names = append(names, fqdn)
 		}
 	}
-	if !hasNdots && !avoidDNS(name) {
-		names = append(names, name)
-	}
-	return names
+	return append(names, name)
 }
 
 func avoidDNS(name string) bool {

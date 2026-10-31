@@ -1,6 +1,7 @@
 package libbox
 
 import (
+	"encoding/json"
 	"math"
 	"os"
 	"path/filepath"
@@ -31,9 +32,13 @@ var (
 	sLogMaxLines             int
 	sDebug                   bool
 	sCrashReportSource       string
+	sAppVersion              string
+	sAppMarketingVersion     string
 	sOOMKillerEnabled        bool
 	sOOMKillerDisabled       bool
 	sOOMMemoryLimit          int64
+	sPowerReportEnabled      bool
+	sPlatformMetadata        []byte
 )
 
 func init() {
@@ -51,9 +56,13 @@ type SetupOptions struct {
 	LogMaxLines             int
 	Debug                   bool
 	CrashReportSource       string
+	AppVersion              string
+	AppMarketingVersion     string
 	OomKillerEnabled        bool
 	OomKillerDisabled       bool
 	OomMemoryLimit          int64
+	PowerReportEnabled      bool
+	PlatformMetadata        string
 }
 
 func applySetupOptions(options *SetupOptions) {
@@ -73,6 +82,8 @@ func applySetupOptions(options *SetupOptions) {
 	sLogMaxLines = options.LogMaxLines
 	sDebug = options.Debug
 	sCrashReportSource = options.CrashReportSource
+	sAppVersion = options.AppVersion
+	sAppMarketingVersion = options.AppMarketingVersion
 	ReloadSetupOptions(options)
 }
 
@@ -80,12 +91,19 @@ func ReloadSetupOptions(options *SetupOptions) {
 	sOOMKillerEnabled = options.OomKillerEnabled
 	sOOMKillerDisabled = options.OomKillerDisabled
 	sOOMMemoryLimit = options.OomMemoryLimit
+	sPowerReportEnabled = options.PowerReportEnabled
+	if json.Valid([]byte(options.PlatformMetadata)) {
+		sPlatformMetadata = []byte(options.PlatformMetadata)
+	} else {
+		sPlatformMetadata = nil
+	}
 	if sOOMKillerEnabled {
 		if sOOMMemoryLimit == 0 && C.IsIos {
 			sOOMMemoryLimit = oomkiller.DefaultAppleNetworkExtensionMemoryLimit
+			debug.SetGCPercent(oomkiller.DefaultAppleNetworkExtensionGCPercent)
 		}
 		if sOOMMemoryLimit > 0 {
-			debug.SetMemoryLimit(sOOMMemoryLimit * 3 / 4)
+			debug.SetMemoryLimit(sOOMMemoryLimit * 4 / 5)
 		} else {
 			debug.SetMemoryLimit(math.MaxInt64)
 		}
@@ -98,7 +116,9 @@ func Setup(options *SetupOptions) error {
 	applySetupOptions(options)
 	os.MkdirAll(sWorkingPath, 0o777)
 	os.MkdirAll(sTempPath, 0o777)
-	return redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
+	err := redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
+	savePlatformSnapshot()
+	return err
 }
 
 func SetLocale(localeID string) error {

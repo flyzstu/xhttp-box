@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM golang:1.25-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS builder
 LABEL maintainer="flyzstu <flyzstu@gmail.com>"
 LABEL org.opencontainers.image.title="xhttp-box"
 LABEL org.opencontainers.image.source="https://github.com/flyzstu/xhttp-box"

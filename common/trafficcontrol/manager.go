@@ -2,7 +2,6 @@ package trafficcontrol
 
 import (
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -36,22 +35,18 @@ var (
 )
 
 type Manager struct {
-	outbound      adapter.OutboundManager
-	uploadTotal   atomic.Int64
-	downloadTotal atomic.Int64
-
 	connections             compatible.Map[uuid.UUID, Tracker]
 	closedConnectionsAccess sync.Mutex
 	closedConnections       list.List[TrackerMetadata]
+	closedUploadTotal       int64
+	closedDownloadTotal     int64
 
 	eventSubscriber *observable.Subscriber[ConnectionEvent]
 	eventObserver   *observable.Observer[ConnectionEvent]
-	cleaner         *cleanup.Cleaner
 }
 
-func NewManager(outbound adapter.OutboundManager) *Manager {
+func NewManager() *Manager {
 	return &Manager{
-		outbound:        outbound,
 		eventSubscriber: observable.NewSubscriber[ConnectionEvent](256),
 	}
 }
@@ -60,20 +55,15 @@ func (m *Manager) Name() string {
 	return "traffic manager"
 }
 
-func (m *Manager) Start(stage adapter.StartStage) error {
+func (m *Manager) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage == adapter.StartStateInitialize {
 		m.eventObserver = observable.NewObserver(m.eventSubscriber, 64)
-		m.cleaner = cleanup.Add(m.Clear)
-	}
-	return nil
-}
-
-func (m *Manager) Close() error {
-	if m.cleaner != nil {
-		m.cleaner.Close()
-	}
-	if m.eventObserver != nil {
-		return m.eventObserver.Close()
+		scope.Add(m.eventObserver.Close)
+		cleaner := cleanup.Add(m.Clear)
+		scope.Add(func() error {
+			cleaner.Close()
+			return nil
+		})
 	}
 	return nil
 }
@@ -98,16 +88,19 @@ func (m *Manager) join(tracker Tracker) {
 
 func (m *Manager) leave(tracker Tracker) {
 	metadata := tracker.Metadata()
+	closedAt := time.Now()
+	m.closedConnectionsAccess.Lock()
 	_, loaded := m.connections.LoadAndDelete(metadata.ID)
 	if !loaded {
+		m.closedConnectionsAccess.Unlock()
 		return
 	}
-	closedAt := time.Now()
 	metadata.ClosedAt = closedAt
 	metadataCopy := *metadata
-	m.closedConnectionsAccess.Lock()
 	if m.closedConnections.Len() >= closedConnectionsLimit {
-		m.closedConnections.PopFront()
+		evicted := m.closedConnections.PopFront()
+		m.closedUploadTotal += evicted.Upload.Load()
+		m.closedDownloadTotal += evicted.Download.Load()
 	}
 	m.closedConnections.PushBack(metadataCopy)
 	m.closedConnectionsAccess.Unlock()
@@ -120,7 +113,21 @@ func (m *Manager) leave(tracker Tracker) {
 }
 
 func (m *Manager) Total() (uplinkTotal int64, downlinkTotal int64) {
-	return m.uploadTotal.Load(), m.downloadTotal.Load()
+	m.closedConnectionsAccess.Lock()
+	defer m.closedConnectionsAccess.Unlock()
+	uplinkTotal = m.closedUploadTotal
+	downlinkTotal = m.closedDownloadTotal
+	for element := m.closedConnections.Front(); element != nil; element = element.Next() {
+		uplinkTotal += element.Value.Upload.Load()
+		downlinkTotal += element.Value.Download.Load()
+	}
+	m.connections.Range(func(_ uuid.UUID, tracker Tracker) bool {
+		metadata := tracker.Metadata()
+		uplinkTotal += metadata.Upload.Load()
+		downlinkTotal += metadata.Download.Load()
+		return true
+	})
+	return
 }
 
 func (m *Manager) ConnectionsLen() int {
@@ -168,5 +175,9 @@ func (m *Manager) CloseAllConnections() {
 func (m *Manager) Clear() {
 	m.closedConnectionsAccess.Lock()
 	defer m.closedConnectionsAccess.Unlock()
+	for element := m.closedConnections.Front(); element != nil; element = element.Next() {
+		m.closedUploadTotal += element.Value.Upload.Load()
+		m.closedDownloadTotal += element.Value.Download.Load()
+	}
 	m.closedConnections.Init()
 }

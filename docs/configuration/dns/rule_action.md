@@ -10,7 +10,8 @@ icon: material/new-box
     :material-plus: [disable_optimistic_cache](#disable_optimistic_cache)  
     :material-plus: [timeout](#timeout)  
     :material-plus: [race](#race)  
-    :material-plus: [speculative](#speculative)
+    :material-plus: [speculative](#speculative)  
+    :material-plus: [remove_client_subnet](#remove_client_subnet)
 
 !!! quote "Changes in sing-box 1.12.0"
 
@@ -54,7 +55,7 @@ immediately; the remaining queries are canceled.
 
 Rules without `race` still take effect strictly in listed order: while a preceding race rule is
 not yet judged, the action of any other matched rule is held until none of the race rules
-matched. The result may therefore depend on server speed only among race rules.
+matched.
 
 ### route
 
@@ -68,7 +69,8 @@ matched. The result may therefore depend on server speed only among race rules.
   "disable_optimistic_cache": false,
   "rewrite_ttl": null,
   "timeout": "",
-  "client_subnet": null
+  "client_subnet": null,
+  "remove_client_subnet": false
 }
 ```
 
@@ -90,8 +92,7 @@ By default, no query is sent in parallel with pending race rules: a matched `rou
 holds its query until none of the race rules matched.
 
 When `speculative` is enabled, the query is sent as soon as the rule matches, in parallel with
-the pending race rules, and may be wasted: its response is still used only after none of the
-race rules matched.
+the pending race rules; its response is used only after none of the race rules matched.
 
 #### strategy
 
@@ -135,6 +136,14 @@ If value is an IP address instead of prefix, `/32` or `/128` will be appended au
 
 Will override `dns.client_subnet`.
 
+#### remove_client_subnet
+
+!!! question "Since sing-box 1.14.0"
+
+Remove the `edns0-subnet` OPT extra record from the query, and suppress `dns.client_subnet`.
+
+Conflict with `client_subnet`.
+
 ### evaluate
 
 !!! question "Since sing-box 1.14.0"
@@ -149,7 +158,8 @@ Will override `dns.client_subnet`.
   "disable_optimistic_cache": false,
   "rewrite_ttl": null,
   "timeout": "",
-  "client_subnet": null
+  "client_subnet": null,
+  "remove_client_subnet": false
 }
 ```
 
@@ -159,8 +169,7 @@ Unlike `route`, it does **not** terminate rule evaluation.
 
 Only allowed on top-level DNS rules (not inside logical sub-rules).
 Rules that use [`match_response`](/configuration/dns/rule/#match_response) or Response Match Fields
-require a preceding top-level rule with `evaluate` action. A rule's own `evaluate` action
-does not satisfy this requirement, because matching happens before the action runs.
+require a preceding top-level rule with `evaluate` action.
 
 #### server
 
@@ -185,7 +194,7 @@ By default, no query is sent in parallel with pending race rules: a matched `eva
 holds its query, and rule matching stops there, until none of the race rules matched.
 
 When `speculative` is enabled, the query is sent as soon as the rule matches, in parallel with
-the pending race rules, and may be wasted: rule matching continues without waiting for them.
+the pending race rules, and rule matching continues without waiting for them.
 
 #### disable_cache
 
@@ -217,6 +226,14 @@ If value is an IP address instead of prefix, `/32` or `/128` will be appended au
 
 Will override `dns.client_subnet`.
 
+#### remove_client_subnet
+
+!!! question "Since sing-box 1.14.0"
+
+Remove the `edns0-subnet` OPT extra record from the query, and suppress `dns.client_subnet`.
+
+Conflict with `client_subnet`.
+
 ### respond
 
 !!! question "Since sing-box 1.14.0"
@@ -229,8 +246,6 @@ Will override `dns.client_subnet`.
 
 `respond` terminates rule evaluation and returns the evaluated response from a preceding [`evaluate`](/configuration/dns/rule_action/#evaluate) action.
 
-This action does not send a new DNS query.
-
 Only allowed after a preceding top-level `evaluate` rule. If the action is reached without an evaluated response at runtime, the request fails with an error instead of falling through to later rules.
 
 ### route-options
@@ -242,7 +257,8 @@ Only allowed after a preceding top-level `evaluate` rule. If the action is reach
   "disable_optimistic_cache": false,
   "rewrite_ttl": null,
   "timeout": "",
-  "client_subnet": null
+  "client_subnet": null,
+  "remove_client_subnet": false
 }
 ```
 

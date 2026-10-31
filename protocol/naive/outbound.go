@@ -33,6 +33,8 @@ func RegisterOutbound(registry *outbound.Registry) {
 	outbound.Register[option.NaiveOutboundOptions](registry, C.TypeNaive, NewOutbound)
 }
 
+var _ adapter.OutboundWithMultiplex = (*Outbound)(nil)
+
 type Outbound struct {
 	outbound.Adapter
 	ctx       context.Context
@@ -176,22 +178,24 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, E.New("unknown quic congestion control: ", options.QUICCongestionControl)
 	}
 	client, err := cronet.NewNaiveClient(cronet.NaiveClientOptions{
-		Context:                 ctx,
-		Logger:                  logger,
-		ServerAddress:           serverAddress,
-		ServerName:              serverName,
-		Username:                options.Username,
-		Password:                options.Password,
-		InsecureConcurrency:     options.InsecureConcurrency,
-		ExtraHeaders:            extraHeaders,
-		TrustedRootCertificates: trustedRootCertificates,
-		Dialer:                  outboundDialer,
-		DNSResolver:             dnsResolver,
-		ECHEnabled:              echEnabled,
-		ECHConfigList:           echConfigList,
-		ECHQueryServerName:      echQueryServerName,
-		QUIC:                    options.QUIC,
-		QUICCongestionControl:   quicCongestionControl,
+		Context:                  ctx,
+		Logger:                   logger,
+		ServerAddress:            serverAddress,
+		ServerName:               serverName,
+		Username:                 options.Username,
+		Password:                 options.Password,
+		InsecureConcurrency:      options.InsecureConcurrency,
+		ExtraHeaders:             extraHeaders,
+		ReceiveWindow:            options.ReceiveWindow.Value(),
+		TrustedRootCertificates:  trustedRootCertificates,
+		Dialer:                   outboundDialer,
+		DNSResolver:              dnsResolver,
+		ECHEnabled:               echEnabled,
+		ECHConfigList:            echConfigList,
+		ECHQueryServerName:       echQueryServerName,
+		QUIC:                     options.QUIC,
+		QUICCongestionControl:    quicCongestionControl,
+		QUICSessionReceiveWindow: options.QUICSessionReceiveWindow.Value(),
 	})
 	if err != nil {
 		return nil, err
@@ -219,7 +223,7 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	}, nil
 }
 
-func (h *Outbound) Start(stage adapter.StartStage) error {
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
@@ -227,6 +231,7 @@ func (h *Outbound) Start(stage adapter.StartStage) error {
 	if err != nil {
 		return err
 	}
+	scope.Add(h.client.Close)
 	h.logger.Info("NaiveProxy started, version: ", h.client.Engine().Version())
 	return nil
 }
@@ -254,12 +259,12 @@ func (h *Outbound) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 	return h.uotClient.ListenPacket(ctx, destination)
 }
 
-func (h *Outbound) InterfaceUpdated(ctx context.Context) {
-	h.client.Engine().CloseAllConnections()
+func (h *Outbound) MultiplexEnabled() bool {
+	return true
 }
 
-func (h *Outbound) Close() error {
-	return h.client.Close()
+func (h *Outbound) InterfaceUpdated(ctx context.Context) {
+	h.client.CloseAllConnections()
 }
 
 func (h *Outbound) Client() *cronet.NaiveClient {

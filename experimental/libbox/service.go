@@ -1,6 +1,7 @@
 package libbox
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -13,8 +14,8 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental/libbox/internal/procfs"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/service/powerreport"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/control"
@@ -26,8 +27,8 @@ var _ adapter.PlatformInterface = (*platformInterfaceWrapper)(nil)
 
 type platformInterfaceWrapper struct {
 	iif                    PlatformInterface
-	useProcFS              bool
 	networkManager         adapter.NetworkManager
+	powerManager           *powerreport.Manager
 	myTunName              string
 	myTunAddress           []netip.Addr
 	defaultInterfaceAccess sync.Mutex
@@ -139,8 +140,12 @@ func (w *platformInterfaceWrapper) NetworkInterfaces() ([]adapter.NetworkInterfa
 				Addresses: common.Map(iteratorToArray[string](netInterface.Addresses), netip.MustParsePrefix),
 				Flags:     linkFlags(uint32(netInterface.Flags)),
 			},
-			Type:        C.InterfaceType(netInterface.Type),
-			DNSServers:  iteratorToArray[string](netInterface.DNSServer),
+			Type:       C.InterfaceType(netInterface.Type),
+			DNSServers: iteratorToArray[string](netInterface.DNSServer),
+			Gateways: common.Filter(common.Map(iteratorToArray[string](netInterface.Gateway), func(it string) netip.Addr {
+				gateway, _ := netip.ParseAddr(it)
+				return gateway.Unmap().WithZone("")
+			}), netip.Addr.IsValid),
 			Expensive:   netInterface.Metered || isDefault && w.isExpensive,
 			Constrained: isDefault && w.isConstrained,
 		})
@@ -171,12 +176,12 @@ func (w *platformInterfaceWrapper) UsePlatformWIFIMonitor() bool {
 	return true
 }
 
-func (w *platformInterfaceWrapper) ReadWIFIState() adapter.WIFIState {
+func (w *platformInterfaceWrapper) ReadWIFIState(ctx context.Context) adapter.WIFIState {
 	wifiState := w.iif.ReadWIFIState()
 	if wifiState == nil {
 		return adapter.WIFIState{}
 	}
-	return (adapter.WIFIState)(*wifiState)
+	return adapter.WIFIState(*wifiState)
 }
 
 func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
@@ -184,33 +189,6 @@ func (w *platformInterfaceWrapper) UsePlatformConnectionOwnerFinder() bool {
 }
 
 func (w *platformInterfaceWrapper) FindConnectionOwner(request *adapter.FindConnectionOwnerRequest) (*adapter.ConnectionOwner, error) {
-	if w.useProcFS {
-		var source netip.AddrPort
-		var destination netip.AddrPort
-		sourceAddr, _ := netip.ParseAddr(request.SourceAddress)
-		source = netip.AddrPortFrom(sourceAddr, uint16(request.SourcePort))
-		destAddr, _ := netip.ParseAddr(request.DestinationAddress)
-		destination = netip.AddrPortFrom(destAddr, uint16(request.DestinationPort))
-
-		var network string
-		switch request.IpProtocol {
-		case int32(syscall.IPPROTO_TCP):
-			network = "tcp"
-		case int32(syscall.IPPROTO_UDP):
-			network = "udp"
-		default:
-			return nil, E.New("unknown protocol: ", request.IpProtocol)
-		}
-
-		uid := procfs.ResolveSocketByProcSearch(network, source, destination)
-		if uid == -1 {
-			return nil, E.New("procfs: not found")
-		}
-		return &adapter.ConnectionOwner{
-			UserId: uid,
-		}, nil
-	}
-
 	result, err := w.iif.FindConnectionOwner(request.IpProtocol, request.SourceAddress, request.SourcePort, request.DestinationAddress, request.DestinationPort)
 	if err != nil {
 		return nil, err

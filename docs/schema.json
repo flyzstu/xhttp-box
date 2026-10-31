@@ -1082,6 +1082,22 @@
                     }
                   ]
                 },
+                "query_client_subnet": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  ]
+                },
+                "query_dnssec": {
+                  "type": "boolean"
+                },
                 "network": {
                   "anyOf": [
                     {
@@ -1680,6 +1696,9 @@
             },
             "client_subnet": {
               "type": "string"
+            },
+            "remove_client_subnet": {
+              "type": "boolean"
             }
           }
         },
@@ -1718,6 +1737,9 @@
             },
             "client_subnet": {
               "type": "string"
+            },
+            "remove_client_subnet": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -1763,6 +1785,9 @@
             },
             "client_subnet": {
               "type": "string"
+            },
+            "remove_client_subnet": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -2006,7 +2031,7 @@
             "inet6_range": {
               "type": "string",
               "examples": [
-                "fc00::/18"
+                "2001:2::/48"
               ]
             }
           },
@@ -4509,6 +4534,11 @@
                 }
               ]
             },
+            "listen_port": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535
+            },
             "relay_server_port": {
               "type": "integer",
               "minimum": 0,
@@ -4558,6 +4588,9 @@
                   "additionalProperties": false
                 }
               ]
+            },
+            "taildrop_directory": {
+              "type": "string"
             }
           },
           "required": [
@@ -6601,9 +6634,6 @@
               "type": "string",
               "enum": [
                 "bbr",
-                "bbr_standard",
-                "bbr2",
-                "bbr2_variant",
                 "cubic",
                 "reno"
               ]
@@ -8715,6 +8745,22 @@
                   }
                 }
               ]
+            },
+            "query_client_subnet": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            },
+            "query_dnssec": {
+              "type": "boolean"
             },
             "network": {
               "anyOf": [
@@ -10829,6 +10875,9 @@
             },
             "min_idle_session": {
               "type": "integer"
+            },
+            "client_metadata": {
+              "type": "string"
             }
           },
           "required": [
@@ -11631,6 +11680,9 @@
               ]
             },
             "brutal_debug": {
+              "type": "boolean"
+            },
+            "disable_chrome_parrot": {
               "type": "boolean"
             },
             "realm": {
@@ -14999,112 +15051,6 @@
           "type": "object",
           "properties": {
             "action": {
-              "const": "direct"
-            },
-            "bind_interface": {
-              "type": "string"
-            },
-            "inet4_bind_address": {
-              "type": "string"
-            },
-            "inet6_bind_address": {
-              "type": "string"
-            },
-            "bind_address_no_port": {
-              "type": "boolean"
-            },
-            "protect_path": {
-              "type": "string"
-            },
-            "routing_mark": {
-              "anyOf": [
-                {
-                  "type": "integer",
-                  "minimum": 0,
-                  "maximum": 4294967295
-                },
-                {
-                  "type": "string"
-                }
-              ]
-            },
-            "reuse_addr": {
-              "type": "boolean"
-            },
-            "netns": {
-              "type": "string",
-              "x-tag-reference": "network_namespace"
-            },
-            "connect_timeout": {
-              "$ref": "#/$defs/Duration"
-            },
-            "tcp_fast_open": {
-              "type": "boolean"
-            },
-            "tcp_multi_path": {
-              "type": "boolean"
-            },
-            "disable_tcp_keep_alive": {
-              "type": "boolean"
-            },
-            "tcp_keep_alive": {
-              "$ref": "#/$defs/Duration"
-            },
-            "tcp_keep_alive_interval": {
-              "$ref": "#/$defs/Duration"
-            },
-            "udp_fragment": {
-              "type": "boolean"
-            },
-            "domain_resolver": {
-              "$ref": "#/$defs/DomainResolver"
-            },
-            "network_strategy": {
-              "type": "string",
-              "enum": [
-                "default",
-                "fallback",
-                "hybrid"
-              ]
-            },
-            "network_type": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/InterfaceType"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/$defs/InterfaceType"
-                  }
-                }
-              ]
-            },
-            "fallback_network_type": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/InterfaceType"
-                },
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/$defs/InterfaceType"
-                  }
-                }
-              ]
-            },
-            "fallback_delay": {
-              "$ref": "#/$defs/Duration"
-            }
-          },
-          "required": [
-            "action"
-          ]
-        },
-        {
-          "type": "object",
-          "properties": {
-            "action": {
               "const": "bypass"
             },
             "outbound": {
@@ -17123,10 +17069,10 @@
     "User": {
       "type": "object",
       "properties": {
-        "Username": {
+        "username": {
           "type": "string"
         },
-        "Password": {
+        "password": {
           "type": "string"
         }
       },

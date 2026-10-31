@@ -14,8 +14,7 @@ import (
 	mDNS "github.com/miekg/dns"
 )
 
-// "localhost" is answered by the mDNSResponder daemon itself, so these tests need
-// no external network.
+// "localhost" is answered by the mDNSResponder daemon itself.
 
 func requireMDNSResponder(t *testing.T) {
 	t.Helper()
@@ -87,8 +86,7 @@ func TestSystemExchangeNoData(t *testing.T) {
 	transport := &Transport{}
 	defer transport.system.close()
 	message := new(mDNS.Msg)
-	// localhost has no MX record, so the daemon reports NoSuchRecord, which must
-	// surface as an empty NOERROR response rather than an error.
+	// localhost has no MX record, so the daemon reports NoSuchRecord.
 	message.SetQuestion("localhost.", mDNS.TypeMX)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -134,9 +132,7 @@ func TestSystemExchangeConcurrent(t *testing.T) {
 		if i%2 == 1 {
 			qtype = mDNS.TypeAAAA
 		}
-		waitGroup.Add(1)
-		go func() {
-			defer waitGroup.Done()
+		waitGroup.Go(func() {
 			message := new(mDNS.Msg)
 			message.SetQuestion("localhost.", qtype)
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -149,7 +145,7 @@ func TestSystemExchangeConcurrent(t *testing.T) {
 			if len(response.Answer) == 0 {
 				errors <- context.DeadlineExceeded
 			}
-		}()
+		})
 	}
 	waitGroup.Wait()
 	close(errors)

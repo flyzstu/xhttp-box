@@ -15,6 +15,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/iponly"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -42,25 +43,22 @@ var (
 
 type Endpoint struct {
 	endpointBase
-	loopContext             context.Context
-	cancelLoop              context.CancelFunc
-	dnsRouter               adapter.DNSRouter
-	client                  *openconnect.Client
-	device                  openconnecttransport.Device
-	server                  string
-	flavor                  string
-	stateAccess             sync.Mutex
-	state                   atomic.Pointer[clientState]
-	dnsTransportAccess      sync.Mutex
-	dnsTransport            *DNSTransport
-	deviceStarted           bool
-	readLoopDone            chan struct{}
-	statusAccess            sync.Mutex
-	statusUpdated           chan struct{}
-	terminalError           string
-	authFormLoopDone        chan struct{}
-	activeTransportLoopDone chan struct{}
-	hotpCounter             atomic.Uint64
+	loopContext        context.Context
+	cancelLoop         context.CancelFunc
+	dnsRouter          adapter.DNSRouter
+	client             *openconnect.Client
+	device             openconnecttransport.Device
+	server             string
+	flavor             string
+	stateAccess        sync.Mutex
+	state              atomic.Pointer[clientState]
+	dnsTransportAccess sync.Mutex
+	dnsTransport       *DNSTransport
+	deviceStarted      bool
+	statusAccess       sync.Mutex
+	statusUpdated      chan struct{}
+	terminalError      string
+	hotpCounter        atomic.Uint64
 }
 
 type clientState struct {
@@ -82,6 +80,24 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		options.DisableTCPKeepAlive = true
 	} else if options.TCPKeepAlive == 0 && options.TCPKeepAliveInterval == 0 {
 		options.TCPKeepAliveSystemDefaults = true
+	}
+	if options.CSD != nil && options.CSD.WrapperPath != "" {
+		err := adapter.CheckSecurityFeature(ctx, "OpenConnect `csd.wrapper_path`")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if options.HIP != nil && options.HIP.WrapperPath != "" {
+		err := adapter.CheckSecurityFeature(ctx, "OpenConnect `hip.wrapper_path`")
+		if err != nil {
+			return nil, err
+		}
+	}
+	if options.TNCC != nil && options.TNCC.WrapperPath != "" {
+		err := adapter.CheckSecurityFeature(ctx, "OpenConnect `tncc.wrapper_path`")
+		if err != nil {
+			return nil, err
+		}
 	}
 	options.UDPBindPort = options.DTLSLocalPort
 	loopContext, cancelLoop := context.WithCancel(ctx)
@@ -399,34 +415,60 @@ func (e *Endpoint) updateState(update func(state *clientState)) {
 	e.state.Store(&newState)
 }
 
-func (e *Endpoint) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStatePostStart {
-		return nil
+func (e *Endpoint) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		scope.Add(func() error {
+			e.notifyStatusUpdated()
+			return nil
+		})
+		scope.Add(e.device.Close)
+		scope.Add(func() error {
+			e.cancelLoop()
+			return nil
+		})
+	case adapter.StartStatePostStart:
+		var loopGroup sync.WaitGroup
+		scope.Add(func() error {
+			loopGroup.Wait()
+			return nil
+		})
+		err := e.client.Start()
+		if err != nil {
+			return err
+		}
+		scope.Add(e.client.Close)
+		e.stateAccess.Lock()
+		e.updateState(func(state *clientState) {
+			state.started = true
+		})
+		e.stateAccess.Unlock()
+		scope.Add(func() error {
+			e.stateAccess.Lock()
+			e.updateState(func(state *clientState) {
+				state.started = false
+			})
+			e.stateAccess.Unlock()
+			return nil
+		})
+		loopGroup.Go(func() {
+			e.readLoop(scope.Context())
+		})
+		loopGroup.Go(func() {
+			e.watchAuthForms(scope.Context())
+		})
+		loopGroup.Go(func() {
+			e.watchActiveTransport(scope.Context())
+		})
 	}
-	err := e.client.Start()
-	if err != nil {
-		return err
-	}
-	e.stateAccess.Lock()
-	e.updateState(func(state *clientState) {
-		state.started = true
-	})
-	e.readLoopDone = make(chan struct{})
-	e.authFormLoopDone = make(chan struct{})
-	e.activeTransportLoopDone = make(chan struct{})
-	e.stateAccess.Unlock()
-	go e.readLoop()
-	go e.watchAuthForms()
-	go e.watchActiveTransport()
 	return nil
 }
 
-func (e *Endpoint) readLoop() {
-	defer close(e.readLoopDone)
+func (e *Endpoint) readLoop(ctx context.Context) {
 	for {
-		packetBuffers, err := e.client.ReadDataPackets(e.loopContext)
+		packetBuffers, err := e.client.ReadDataPackets(ctx)
 		if err != nil {
-			if E.IsClosedOrCanceled(err) || e.loopContext.Err() != nil {
+			if E.IsClosedOrCanceled(err) || ctx.Err() != nil {
 				return
 			}
 			e.logger.Error(E.Cause(err, "client terminated"))
@@ -442,30 +484,6 @@ func (e *Endpoint) readLoop() {
 			return
 		}
 	}
-}
-
-func (e *Endpoint) Close() error {
-	e.stateAccess.Lock()
-	e.updateState(func(state *clientState) {
-		state.started = false
-	})
-	readLoopDone := e.readLoopDone
-	authFormLoopDone := e.authFormLoopDone
-	activeTransportLoopDone := e.activeTransportLoopDone
-	e.stateAccess.Unlock()
-	e.cancelLoop()
-	err := E.Errors(e.client.Close(), e.device.Close())
-	if readLoopDone != nil {
-		<-readLoopDone
-	}
-	if authFormLoopDone != nil {
-		<-authFormLoopDone
-	}
-	if activeTransportLoopDone != nil {
-		<-activeTransportLoopDone
-	}
-	e.notifyStatusUpdated()
-	return err
 }
 
 func (e *Endpoint) InterfaceUpdated(ctx context.Context) {
@@ -569,16 +587,20 @@ func (e *Endpoint) ListenPacketWithDestination(ctx context.Context, destination 
 		if err != nil {
 			return nil, netip.Addr{}, err
 		}
-		return N.ListenSerial(ctx, e.device, destination, destinationAddresses)
+		packetConn, destinationAddress, err := N.ListenSerial(ctx, e.device, destination, destinationAddresses)
+		if err != nil {
+			return nil, netip.Addr{}, err
+		}
+		return iponly.NewPacketConn(e.logger, packetConn), destinationAddress, nil
 	}
 	packetConn, err := e.device.ListenPacket(ctx, destination)
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
 	if destination.IsIP() {
-		return packetConn, destination.Addr, nil
+		return iponly.NewPacketConn(e.logger, packetConn), destination.Addr, nil
 	}
-	return packetConn, netip.Addr{}, nil
+	return iponly.NewPacketConn(e.logger, packetConn), netip.Addr{}, nil
 }
 
 func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {

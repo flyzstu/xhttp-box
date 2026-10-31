@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/sagernet/sing-box/common/interrupt"
 	"github.com/sagernet/sing-box/common/tlsspoof"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
@@ -41,7 +42,6 @@ type InboundManager interface {
 	Lifecycle
 	Inbounds() []Inbound
 	Get(tag string) (Inbound, bool)
-	Remove(tag string) error
 	Create(ctx context.Context, router Router, logger log.ContextLogger, tag string, inboundType string, options any) error
 }
 
@@ -54,6 +54,12 @@ type InboundContext struct {
 	Destination M.Socksaddr
 	User        string
 	Outbound    string
+
+	// power report
+
+	RouteRule     string
+	RouteOutbound string
+	OutboundChain []Outbound
 
 	// sniffer
 
@@ -95,6 +101,8 @@ type InboundContext struct {
 	SourceMACAddress                    net.HardwareAddr
 	SourceHostname                      string
 	QueryType                           uint16
+	QueryClientSubnet                   netip.Prefix
+	QueryDNSSEC                         bool
 	FakeIP                              bool
 	PreMatch                            bool
 
@@ -107,7 +115,7 @@ type InboundContext struct {
 	SourcePortMatch              bool
 	DestinationAddressMatch      bool
 	DestinationPortMatch         bool
-	DidMatch                     bool
+	DeferredIPCIDRMatchGroups    uint8
 	IgnoreDestinationIPCIDRMatch bool
 
 	// query-level domain cache
@@ -142,7 +150,7 @@ func (c *InboundContext) ResetRuleMatchCache() {
 	c.SourcePortMatch = false
 	c.DestinationAddressMatch = false
 	c.DestinationPortMatch = false
-	c.DidMatch = false
+	c.DeferredIPCIDRMatchGroups = 0
 }
 
 func (c *InboundContext) DNSResponseAddressesForMatch() []netip.Addr {
@@ -191,6 +199,28 @@ func DNSResponseAddresses(response *dns.Msg) []netip.Addr {
 }
 
 type inboundContextKey struct{}
+
+type dnsTransportTagKey struct{}
+
+func ContextWithDNSTransportTag(ctx context.Context, transportTag string) context.Context {
+	return context.WithValue(ctx, (*dnsTransportTagKey)(nil), transportTag)
+}
+
+func DNSTransportTagFromContext(ctx context.Context) (string, bool) {
+	transportTag, loaded := ctx.Value((*dnsTransportTagKey)(nil)).(string)
+	return transportTag, loaded
+}
+
+func ContextForMultiplexSession(ctx context.Context) context.Context {
+	var sessionContext InboundContext
+	metadata := ContextFrom(ctx)
+	if metadata != nil {
+		sessionContext.Outbound = metadata.Outbound
+	}
+	ctx = ContextWithDNSTransportTag(ctx, "")
+	ctx = interrupt.ContextWithIsExternalConnection(ctx, false)
+	return WithContext(ctx, &sessionContext)
+}
 
 func WithContext(ctx context.Context, inboundContext *InboundContext) context.Context {
 	return context.WithValue(ctx, (*inboundContextKey)(nil), inboundContext)
