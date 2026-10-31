@@ -259,7 +259,7 @@ func (w *Weighted) Selected(network string) adapter.Outbound {
 	var selectedOutbound adapter.Outbound
 	if selected != "" {
 		for _, member := range w.members {
-			if member.tag == selected && containsNetwork(member.outbound.Network(), network) {
+			if member.tag == selected && member.outbound != nil && containsNetwork(member.outbound.Network(), network) {
 				selectedOutbound = member.outbound
 				break
 			}
