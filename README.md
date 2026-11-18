@@ -22,7 +22,9 @@ published by this repository use the `xhttp-box` name. See
 xhttp-box adds an Xray-compatible XHTTP transport to the sing-box codebase.
 It includes client and server implementations, bidirectional Xray-core
 interoperability tests, lifecycle and race testing, and downloadable
-development builds.
+development builds. The fork also ports the upstream MASQUE
+(RFC 9484 CONNECT-IP) endpoints and migrates the `http` and `mixed`
+protocols onto the unified `transport/http` stack.
 
 ## Highlights
 
@@ -33,7 +35,9 @@ development builds.
 - XMUX connection reuse and configurable connection/request budgets
 - Independent `download_settings` endpoint
 - Configurable padding, session, sequence, and uplink-data placement
-- Lifecycle, race, HTTP/3, REALITY, XMUX, and protocol test coverage
+- MASQUE (RFC 9484) `masque-client`/`masque-server` endpoints
+- Lifecycle, race, HTTP/3, REALITY, XMUX, real-traffic performance, and
+  protocol test coverage
 
 ## Compatibility
 
@@ -121,6 +125,16 @@ go test -tags with_utls ./transport/v2rayxhttp
 ```
 
 HTTP/3 builds require the `with_quic` build tag.
+
+Run the real-traffic performance suite (masque/http tunnels, TCP and UDP):
+
+```bash
+go test -tags "with_quic,with_gvisor" -run "TestPerf" -v ./test
+```
+
+Protocol regression suites live in `test/`: `TestMASQUE*` covers the
+CONNECT-IP endpoints, and the `TestHTTP*`/`TestMixed*` suites exercise the
+unified `transport/http` stack.
 
 ## Automation
 

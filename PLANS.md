@@ -121,3 +121,54 @@ sing-box 的 GPL-3.0 项目规则维护。
    自动运行生命周期 race 测试、默认 transport 测试、`with_quic` 与 `with_utls`
    路径；每周一 02:17 UTC 也会定时运行，支持手动触发。
 2. 在具备 `XHTTP_XRAY_BINARY` 的环境继续运行可选的双向互通矩阵。
+
+---
+
+# 其他移植:MASQUE 与统一 HTTP 栈(2026-11)
+
+## MASQUE(RFC 9484 CONNECT-IP)endpoint
+
+- 自上游 v1.15.0-alpha.13 整体移植 `transport/masque/`(session/client/server/
+  template/capsule/icmp/pool)、统一 `transport/http/` 栈(tunnel client/server、
+  capsule、h3)、`option/masque.go` 与 endpoint 注册,新增
+  `masque-client` / `masque-server` 两个 endpoint 类型。
+- 外部依赖(sing、sing-tun、quic-go fork)与上游完全同版本,`go.mod` 零改动;
+  上游的仓内毛细依赖 `common/badhttp/`、`common/kernelports/` 与
+  `adapter.JudgeHostFlow` 随移植补齐。
+- 配置文档(`endpoint/masque-{client,server}` 及中文版)与上游一致,
+  `docs/schema.json` 已重生成核对。
+
+## http 与 mixed 迁移至统一 transport/http 栈
+
+- `protocol/http/{inbound,outbound}.go` 与 `protocol/mixed/inbound.go` 从
+  `sing/protocol/http.HandleConnectionEx` 旧路径切换为仓内 `transport/http`
+  server;mixed inbound 以首字节嗅探分流,socks4/5 走原 handshake,HTTP 走
+  新栈(认证语义随栈切换:统一栈对 extended CONNECT 强制
+  `Proxy-Authorization`,见 `transport/http/tunnel_server.go`)。
+- `option/simple.go` 补齐 `HTTPInboundOptions` / `HTTPOutboundOptions` 元
+  数据(JSON 变体、schema helper、version 归一化);`route/network.go` 与
+  `experimental/libbox` 的 HTTP 前置调用点适配 `transport/http.NewHTTPServer`。
+
+## 新特性验证
+
+- `TestMASQUE*` 7/7 通过(h1/h2/h3 自环、版本回退、通告路由、NoRoute、
+  PacketTooBig、重连退避、1.1 升级隧道直测),HTTP/mixed 迁移后既有套件
+  全量回归通过。测试需 `with_quic`(h3)与 `with_gvisor`(h2/h3 数据面)。
+
+- 新增真实流量性能测试 `test/transport_perf_test.go`,运行方式:
+
+  ```bash
+  go test -tags "with_quic,with_gvisor" -run "TestPerf" -v ./test
+  ```
+
+  | 场景 | 结果 |
+  |------|------|
+  | http(h2 TLS)隧道链 256 MiB echo | 1142 MB/s |
+  | masque h3 隧道 256 MiB echo | 209 MB/s |
+  | masque h3 隧道 20000×1024B 定速 UDP | 100% 送达,2.1 MB/s |
+  | socks→direct 定速 UDP 基线 | 100% 送达,2.1 MB/s |
+
+- 行为备注:UDP 用 2000 pkt/s 定速 + 并发收发;洪泛 burst-then-drain 模式下
+  sing 的 socks UDP 中继(纯直连、不过隧道)也会丢失约 43% 报文,为上游
+  sing v0.9.7 中继的固有行为,非 masque 移植引入。报文尺寸避开 1200B 以免
+  压在 QUIC datagram 容量边界上偶发 `DatagramTooLarge`。
