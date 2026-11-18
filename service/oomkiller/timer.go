@@ -4,11 +4,13 @@ import (
 	"context"
 	runtimeDebug "runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/byteformats"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/memory"
@@ -112,6 +114,7 @@ type adaptiveTimer struct {
 	network         adapter.NetworkManager
 	connections     adapter.ConnectionManager
 	recorder        *Recorder
+	pressure        *atomic.Uint32
 	limitThresholds pressureThresholds
 
 	access sync.Mutex
@@ -119,13 +122,14 @@ type adaptiveTimer struct {
 	timerState
 }
 
-func newAdaptiveTimer(logger log.ContextLogger, network adapter.NetworkManager, connections adapter.ConnectionManager, recorder *Recorder, config timerConfig) *adaptiveTimer {
+func newAdaptiveTimer(logger log.ContextLogger, network adapter.NetworkManager, connections adapter.ConnectionManager, recorder *Recorder, pressure *atomic.Uint32, config timerConfig) *adaptiveTimer {
 	t := &adaptiveTimer{
 		timerConfig: config,
 		logger:      logger,
 		network:     network,
 		connections: connections,
 		recorder:    recorder,
+		pressure:    pressure,
 	}
 	if config.policyMode == policyModeMemoryLimit || config.policyMode == policyModeNetworkExtension {
 		t.limitThresholds = computeLimitThresholds(config.memoryLimit, config.safetyMargin)
@@ -208,6 +212,7 @@ func (t *adaptiveTimer) poll() {
 	}
 	state := t.state
 	t.access.Unlock()
+	t.pressure.Store(uint32(state.memoryPressure()))
 	var connections int
 	if t.connections != nil {
 		connections = t.connections.Count()
@@ -371,5 +376,16 @@ func (s pressureState) String() string {
 		return "triggered"
 	default:
 		return "normal"
+	}
+}
+
+func (s pressureState) memoryPressure() tun.MemoryPressure {
+	switch s {
+	case pressureStateArmed:
+		return tun.MemoryPressureWarning
+	case pressureStateTriggered:
+		return tun.MemoryPressureCritical
+	default:
+		return tun.MemoryPressureNone
 	}
 }

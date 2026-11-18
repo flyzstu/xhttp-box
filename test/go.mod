@@ -12,12 +12,12 @@ require (
 	github.com/gofrs/uuid/v5 v5.5.1
 	github.com/opencontainers/image-spec v1.1.0
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.12
-	github.com/sagernet/sing v0.9.7-0.20261023115459-5dc452e537bf
+	github.com/sagernet/sing v0.9.7-0.20261023115510-03a6cce64bf7
 	github.com/sagernet/sing-openvpn v0.1.1-0.20261020061838-432d37b47c92
 	github.com/sagernet/sing-quic v0.7.2-0.20261020082049-7e0a5869a5f4
 	github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929204512-65740e0f0e3e
 	github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20260929152114-a69d1086332b
-	github.com/sagernet/sing-tun v0.9.7-0.20261023115432-040db71fcd33
+	github.com/sagernet/sing-tun v0.9.7-0.20261028024126-5b0a1a7a394e
 	github.com/spyzhov/ajson v0.9.4
 	github.com/stretchr/testify v1.12.0
 	go.uber.org/goleak v1.3.0

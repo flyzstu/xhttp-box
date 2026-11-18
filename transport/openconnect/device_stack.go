@@ -67,23 +67,59 @@ func newStackDevice(options DeviceOptions) (*stackDevice, error) {
 	}
 	if options.Handler != nil {
 		ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tun.NewTCPForwarder(options.Context, ipStack, options.Handler).HandlePacket)
-		udpForwarder := tun.NewUDPForwarder(options.Context, ipStack, options.Handler, tun.UDPNatOptions{
-			Timeout:          options.UDPTimeout,
-			Shared:           true,
-			Mapping:          options.UDPMapping,
-			Filtering:        options.UDPFiltering,
-			MaxSize:          options.UDPNATMax,
-			InterfaceFinder:  options.InterfaceFinder,
-			ExcludeInterface: options.ExcludeInterface,
-		})
+		natOptions := tun.UDPNatOptions{
+			Timeout:         options.UDPTimeout,
+			Shared:          true,
+			Mapping:         options.UDPMapping,
+			Filtering:       options.UDPFiltering,
+			MaxSize:         options.UDPNATMax,
+			InterfaceFinder: options.InterfaceFinder,
+		}
+		dispatcher := tun.NewForwardDispatcher(options.Handler, &stackEndpointWriteback{endpoint: endpoint}, options.Logger, 0, natOptions, options.ICMPTimeout)
+		udpForwarder := tun.NewUDPForwarder(options.Context, ipStack, options.Handler, dispatcher, natOptions)
 		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 		device.udpForwarder = udpForwarder
-		icmpForwarder := tun.NewICMPForwarder(ipStack, options.Handler, options.Logger)
+		icmpForwarder := tun.NewICMPForwarder(ipStack, options.Handler, dispatcher, options.Logger)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
 		device.icmpForwarder = icmpForwarder
 	}
 	return device, nil
+}
+
+type stackEndpointWriteback struct {
+	endpoint *stackEndpoint
+}
+
+func (w *stackEndpointWriteback) ReturnHeadroom() int {
+	return 0
+}
+
+func (w *stackEndpointWriteback) WriteReturnPackets(packets [][]byte) error {
+	w.endpoint.dispatcherAccess.RLock()
+	dispatcher := w.endpoint.dispatcher
+	w.endpoint.dispatcherAccess.RUnlock()
+	if dispatcher == nil {
+		return E.New("endpoint is not attached")
+	}
+	for _, packet := range packets {
+		if len(packet) == 0 {
+			continue
+		}
+		var networkProtocol tcpip.NetworkProtocolNumber
+		switch header.IPVersion(packet) {
+		case header.IPv4Version:
+			networkProtocol = header.IPv4ProtocolNumber
+		case header.IPv6Version:
+			networkProtocol = header.IPv6ProtocolNumber
+		}
+		packetBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
+			Payload: buffer.MakeWithData(packet),
+		})
+		dispatcher.DeliverNetworkPacket(networkProtocol, packetBuffer)
+		packetBuffer.DecRef()
+	}
+	return nil
 }
 
 func (d *stackDevice) Start() error {

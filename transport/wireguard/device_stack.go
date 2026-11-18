@@ -80,7 +80,15 @@ func newStackDevice(options DeviceOptions) (*stackDevice, error) {
 	tunDevice.stack = ipStack
 	if options.Handler != nil {
 		ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tun.NewTCPForwarder(options.Context, ipStack, options.Handler).HandlePacket)
-		udpForwarder := tun.NewUDPForwarder(options.Context, ipStack, options.Handler, tun.UDPNatOptions{
+		dispatcher := tun.NewForwardDispatcher(options.Handler, &forwardWriteback{endpoint: (*wireEndpoint)(tunDevice)}, options.Logger, 0, tun.UDPNatOptions{
+			Timeout:         options.UDPTimeout,
+			Shared:          true,
+			Mapping:         options.UDPMapping,
+			Filtering:       options.UDPFiltering,
+			MaxSize:         options.UDPNATMax,
+			InterfaceFinder: options.InterfaceFinder,
+		}, options.ICMPTimeout)
+		udpForwarder := tun.NewUDPForwarder(options.Context, ipStack, options.Handler, dispatcher, tun.UDPNatOptions{
 			Timeout:         options.UDPTimeout,
 			Shared:          true,
 			Mapping:         options.UDPMapping,
@@ -90,12 +98,41 @@ func newStackDevice(options DeviceOptions) (*stackDevice, error) {
 		})
 		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
 		tunDevice.udpForwarder = udpForwarder
-		icmpForwarder := tun.NewICMPForwarder(ipStack, options.Handler, options.Logger)
+		icmpForwarder := tun.NewICMPForwarder(ipStack, options.Handler, dispatcher, options.Logger)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
 		tunDevice.icmpForwarder = icmpForwarder
 	}
 	return tunDevice, nil
+}
+
+type forwardWriteback struct {
+	endpoint *wireEndpoint
+}
+
+func (w *forwardWriteback) ReturnHeadroom() int {
+	return 0
+}
+
+func (w *forwardWriteback) WriteReturnPackets(packets [][]byte) error {
+	for _, packet := range packets {
+		if len(packet) == 0 {
+			continue
+		}
+		var networkProtocol tcpip.NetworkProtocolNumber
+		switch header.IPVersion(packet) {
+		case header.IPv4Version:
+			networkProtocol = header.IPv4ProtocolNumber
+		case header.IPv6Version:
+			networkProtocol = header.IPv6ProtocolNumber
+		}
+		packetBuffer := stack.NewPacketBuffer(stack.PacketBufferOptions{
+			Payload: buffer.MakeWithData(packet),
+		})
+		w.endpoint.dispatcher.DeliverNetworkPacket(networkProtocol, packetBuffer)
+		packetBuffer.DecRef()
+	}
+	return nil
 }
 
 func (w *stackDevice) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {

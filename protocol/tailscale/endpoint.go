@@ -479,7 +479,7 @@ func (t *Endpoint) postStart(scope *adapter.Scope) error {
 	if gErr != nil {
 		return gonet.TranslateNetstackError(gErr)
 	}
-	icmpForwarder := tun.NewICMPForwarder(ipStack, t, t.logger)
+	icmpForwarder := tun.NewICMPForwarder(ipStack, t, nil, t.logger)
 	scope.Add(icmpForwarder.Close)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 	ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)

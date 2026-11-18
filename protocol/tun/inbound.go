@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -58,6 +59,7 @@ type Inbound struct {
 	routeExcludeRuleSet    []adapter.RuleSet
 	routeAddressSet        []*netipx.IPSet
 	routeExcludeAddressSet []*netipx.IPSet
+	routeAddressSetAccess  sync.RWMutex
 }
 
 func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TunInboundOptions) (adapter.Inbound, error) {
@@ -368,16 +370,15 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		var err error
 		if t.enableAutoRedirect {
 			t.autoRedirect, err = tun.NewAutoRedirect(tun.AutoRedirectOptions{
-				TunOptions:             &t.tunOptions,
-				Context:                t.ctx,
-				Handler:                (*autoRedirectHandler)(t),
-				Logger:                 t.logger,
-				NetworkMonitor:         t.networkManager.NetworkMonitor(),
-				InterfaceFinder:        t.networkManager.InterfaceFinder(),
-				TableName:              "sing-box",
-				DisableNFTables:        t.disableNFTables,
-				RouteAddressSet:        &t.routeAddressSet,
-				RouteExcludeAddressSet: &t.routeExcludeAddressSet,
+				TunOptions:      &t.tunOptions,
+				Context:         t.ctx,
+				Handler:         (*autoRedirectHandler)(t),
+				Logger:          t.logger,
+				NetworkMonitor:  t.networkManager.NetworkMonitor(),
+				InterfaceFinder: t.networkManager.InterfaceFinder(),
+				TableName:       "sing-box",
+				DisableNFTables: t.disableNFTables,
+				RouteAddressSet: t.routeAddressSetPrefixes,
 			})
 			if err != nil {
 				return E.Cause(err, "initialize auto-redirect")
@@ -391,13 +392,14 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 				}
 				routeRuleSet.IncRef()
 				t.routeAddressSet = append(t.routeAddressSet, ipSets...)
-				if t.autoRedirect != nil {
-					callback := routeRuleSet.RegisterCallback(t.updateRouteAddressSet)
-					scope.Add(func() error {
-						routeRuleSet.UnregisterCallback(callback)
-						return nil
-					})
+				if t.autoRedirect == nil {
+					continue
 				}
+				callback := routeRuleSet.RegisterCallback(t.updateRouteAddressSet)
+				scope.Add(func() error {
+					routeRuleSet.UnregisterCallback(callback)
+					return nil
+				})
 			}
 			for _, routeExcludeRuleSet := range t.routeExcludeRuleSet {
 				ipSets := routeExcludeRuleSet.ExtractIPSet()
@@ -406,13 +408,14 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 				}
 				routeExcludeRuleSet.IncRef()
 				t.routeExcludeAddressSet = append(t.routeExcludeAddressSet, ipSets...)
-				if t.autoRedirect != nil {
-					callback := routeExcludeRuleSet.RegisterCallback(t.updateRouteAddressSet)
-					scope.Add(func() error {
-						routeExcludeRuleSet.UnregisterCallback(callback)
-						return nil
-					})
+				if t.autoRedirect == nil {
+					continue
 				}
+				callback := routeExcludeRuleSet.RegisterCallback(t.updateRouteAddressSet)
+				scope.Add(func() error {
+					routeExcludeRuleSet.UnregisterCallback(callback)
+					return nil
+				})
 			}
 		}
 		var tunInterface tun.Tun
@@ -497,6 +500,9 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 		if err != nil {
 			return E.Cause(err, "starting TUN interface")
 		}
+		if routedPort, isRoutedPort := t.tunStack.(tun.RoutedPort); isRoutedPort {
+			t.networkManager.RegisterHostPort(routedPort)
+		}
 		if t.autoRedirect != nil {
 			scope.Add(t.autoRedirect.Close)
 			monitor.Start("initialize auto-redirect")
@@ -506,18 +512,32 @@ func (t *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 				return E.Cause(err, "auto-redirect")
 			}
 		}
-		t.routeAddressSet = nil
-		t.routeExcludeAddressSet = nil
 	}
 	return nil
 }
 
 func (t *Inbound) updateRouteAddressSet(it adapter.RuleSet) {
-	t.routeAddressSet = common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
-	t.routeExcludeAddressSet = common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)
-	t.autoRedirect.UpdateRouteAddressSet()
-	t.routeAddressSet = nil
-	t.routeExcludeAddressSet = nil
+	routeAddressSet := common.FlatMap(t.routeRuleSet, adapter.RuleSet.ExtractIPSet)
+	routeExcludeAddressSet := common.FlatMap(t.routeExcludeRuleSet, adapter.RuleSet.ExtractIPSet)
+	t.routeAddressSetAccess.Lock()
+	t.routeAddressSet = routeAddressSet
+	t.routeExcludeAddressSet = routeExcludeAddressSet
+	t.routeAddressSetAccess.Unlock()
+	err := t.autoRedirect.UpdateRouteAddressSet()
+	if err != nil {
+		t.logger.Error("update route address set: ", err)
+	}
+}
+
+func (t *Inbound) routeAddressSetPrefixes() (include []netip.Prefix, exclude []netip.Prefix, err error) {
+	t.routeAddressSetAccess.RLock()
+	defer t.routeAddressSetAccess.RUnlock()
+	include = common.FlatMap(t.routeAddressSet, (*netipx.IPSet).Prefixes)
+	if len(t.routeAddressSet) > 0 && len(include) == 0 {
+		include = []netip.Prefix{netip.PrefixFrom(netip.IPv4Unspecified(), 32), netip.PrefixFrom(netip.IPv6Unspecified(), 128)}
+	}
+	exclude = common.FlatMap(t.routeExcludeAddressSet, (*netipx.IPSet).Prefixes)
+	return
 }
 
 func (t *Inbound) InterfaceUpdated(ctx context.Context) {

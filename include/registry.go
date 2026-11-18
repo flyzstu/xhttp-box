@@ -114,6 +114,7 @@ func EndpointRegistry() *endpoint.Registry {
 	registerWireGuardEndpoint(registry)
 	registerOpenConnectEndpoint(registry)
 	registerOpenVPNEndpoints(registry)
+	registerMASQUEEndpoint(registry)
 	registerTailscaleEndpoint(registry)
 
 	return registry
