@@ -285,17 +285,3 @@ func TestMASQUEStuckClient(t *testing.T) {
 	defer closeEcho()
 	require.NoError(t, probeOpenVPNTCPWithTimeout(environment.clientProxyPort, masqueServerAddress, echoPort, 5*time.Second))
 }
-
-func readVarint(t *testing.T, reader *std_bufio.Reader) uint64 {
-	t.Helper()
-	first, err := reader.ReadByte()
-	require.NoError(t, err)
-	length := 1 << (first >> 6)
-	value := uint64(first & 0x3f)
-	for i := 1; i < length; i++ {
-		next, err := reader.ReadByte()
-		require.NoError(t, err)
-		value = value<<8 | uint64(next)
-	}
-	return value
-}
