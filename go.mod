@@ -5,7 +5,7 @@ go 1.25.5
 require (
 	filippo.io/age v1.3.1
 	github.com/anthropics/anthropic-sdk-go v1.26.0
-	github.com/anytls/sing-anytls v0.0.11
+	github.com/anytls/sing-anytls v0.0.13
 	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 	github.com/caddyserver/zerossl v0.1.5
 	github.com/coder/websocket v1.8.14
@@ -44,20 +44,20 @@ require (
 	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf
 	github.com/sagernet/nftables v0.3.0-mod.4
-	github.com/sagernet/quic-go v0.61.0-sing-box-mod.12
+	github.com/sagernet/quic-go v0.61.0-sing-box-mod.14
 	github.com/sagernet/sing v0.9.7-0.20261023115510-03a6cce64bf7
 	github.com/sagernet/sing-cloudflared v0.1.4-0.20261021152903-2d40d788fcf6
 	github.com/sagernet/sing-mux v0.3.10-0.20260929204512-caf09fe32475
 	github.com/sagernet/sing-openconnect v0.1.1-0.20260929151225-cbd68c45de58
 	github.com/sagernet/sing-openvpn v0.1.1-0.20261020061838-432d37b47c92
-	github.com/sagernet/sing-quic v0.7.2-0.20261020082049-7e0a5869a5f4
+	github.com/sagernet/sing-quic v0.7.2-0.20261114063120-0979e001618d
 	github.com/sagernet/sing-shadowsocks v0.2.9-0.20260929204512-65740e0f0e3e
 	github.com/sagernet/sing-shadowsocks2 v0.2.2-0.20260929152114-a69d1086332b
 	github.com/sagernet/sing-shadowtls v0.2.2-0.20260928201441-a9c0127d5c99
 	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 	github.com/sagernet/sing-tun v0.9.7-0.20261028024126-5b0a1a7a394e
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca
-	github.com/sagernet/sing-vmess v0.2.9-0.20261019223527-a0c58542bd9d
+	github.com/sagernet/sing-vmess v0.2.9-0.20261116164733-ca746ebade33
 	github.com/sagernet/smux v1.5.50-sing-box-mod.1
 	github.com/sagernet/tailscale v1.102.1-sing-box-1.14-mod.5.0.20261019070639-79c1732442a9
 	github.com/sagernet/wireguard-go v0.0.8-0.20261022215841-e4d85ef2ed38

@@ -12,15 +12,17 @@ import (
 )
 
 type responseConn struct {
-	reader io.Reader
-	writer http.ResponseWriter
-	done   <-chan struct{}
-	access sync.Mutex
-	closed bool
+	reader  io.Reader
+	writer  http.ResponseWriter
+	flusher http.Flusher
+	done    <-chan struct{}
+	access  sync.Mutex
+	closed  bool
 }
 
 func newResponseConn(reader io.Reader, writer http.ResponseWriter, done <-chan struct{}) *responseConn {
-	return &responseConn{reader: reader, writer: writer, done: done}
+	flusher, _ := writer.(http.Flusher)
+	return &responseConn{reader: reader, writer: writer, flusher: flusher, done: done}
 }
 func (c *responseConn) Read(buffer []byte) (int, error) { return c.reader.Read(buffer) }
 func (c *responseConn) Write(buffer []byte) (int, error) {
@@ -30,10 +32,8 @@ func (c *responseConn) Write(buffer []byte) (int, error) {
 		return 0, net.ErrClosed
 	}
 	n, err := c.writer.Write(buffer)
-	if err == nil {
-		if flusher, ok := c.writer.(http.Flusher); ok {
-			flusher.Flush()
-		}
+	if err == nil && c.flusher != nil {
+		c.flusher.Flush()
 	}
 	return n, err
 }

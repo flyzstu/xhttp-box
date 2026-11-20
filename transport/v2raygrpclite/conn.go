@@ -104,6 +104,7 @@ func (c *GunConn) read(b []byte) (n int, err error) {
 func (c *GunConn) Write(b []byte) (n int, err error) {
 	varLen := varbin.UvarintLen(uint64(len(b)))
 	buffer := buf.NewSize(6 + varLen + len(b))
+	defer buffer.Release()
 	header := buffer.Extend(6 + varLen)
 	header[0] = 0x00
 	binary.BigEndian.PutUint32(header[1:5], uint32(1+varLen+len(b)))

@@ -118,8 +118,10 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			s.invalid(writer, request, http.StatusBadRequest, E.New("packet-up is not allowed"))
 			return
 		}
-		payload, err := s.config.extractPacketPayload(request)
-		if err != nil || len(payload) > s.config.scMaxPost.random() {
+		limit := s.config.scMaxPost.random()
+		payload, err := s.config.extractPacketPayload(request, limit)
+		if err != nil || len(payload) > limit {
+			releasePacketBuffer(payload)
 			s.invalid(writer, request, http.StatusBadRequest, E.New("invalid xhttp upload"))
 			return
 		}
@@ -129,6 +131,7 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 			return
 		}
 		if !session.push(packet{sequence: seq, payload: payload}) {
+			releasePacketBuffer(payload)
 			s.invalid(writer, request, http.StatusConflict, E.New("closed xhttp session"))
 			return
 		}
@@ -214,8 +217,10 @@ func (s *Server) session(id string) *serverSession {
 		return actual.(*serverSession)
 	}
 	go func() {
+		timer := time.NewTimer(s.sessionTimeout)
+		defer timer.Stop()
 		select {
-		case <-time.After(s.sessionTimeout):
+		case <-timer.C:
 			s.closeSession(id, session)
 		case <-session.connected:
 		}
@@ -292,12 +297,28 @@ func newServerSession(maxPackets int) *serverSession {
 }
 
 func (s *serverSession) copyPackets() {
-	pending := make(map[uint64][]byte)
+	var pending map[uint64][]byte
 	var next uint64
 	for {
 		select {
 		case item := <-s.packets:
-			pending[item.sequence] = item.payload
+			if item.sequence < next {
+				releasePacketBuffer(item.payload)
+				continue
+			}
+			if item.sequence != next {
+				if pending == nil {
+					pending = make(map[uint64][]byte)
+				}
+				pending[item.sequence] = item.payload
+				continue
+			}
+			if _, err := s.writer.Write(item.payload); err != nil {
+				releasePacketBuffer(item.payload)
+				return
+			}
+			releasePacketBuffer(item.payload)
+			next++
 			for {
 				payload, ok := pending[next]
 				if !ok {
@@ -305,8 +326,10 @@ func (s *serverSession) copyPackets() {
 				}
 				delete(pending, next)
 				if _, err := s.writer.Write(payload); err != nil {
+					releasePacketBuffer(payload)
 					return
 				}
+				releasePacketBuffer(payload)
 				next++
 			}
 		case <-s.closed:

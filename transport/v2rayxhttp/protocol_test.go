@@ -2,6 +2,7 @@ package v2rayxhttp
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -52,7 +53,7 @@ func TestPacketPayloadChunking(t *testing.T) {
 			require.NoError(t, err)
 			request := httptest.NewRequest(http.MethodPost, "http://example.com/xhttp/", nil)
 			config.fillPacketRequest(request, "session", 0, payload)
-			decoded, err := config.extractPacketPayload(request)
+			decoded, err := config.extractPacketPayload(request, 1000000)
 			require.NoError(t, err)
 			require.Equal(t, payload, decoded)
 			for index := 0; ; index++ {
@@ -69,6 +70,40 @@ func TestPacketPayloadChunking(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueryHelpers(t *testing.T) {
+	require.Equal(t, "a=1&x_padding=2", appendQuery("a=1", "x_padding", "2"))
+	require.Equal(t, "a=1&x_padding=2", appendQuery("a=1&x_padding=9", "x_padding", "2"))
+	require.Equal(t, "x_p=9", appendQuery("x%5Fp=1", "x_p", "9"))
+	require.Equal(t, "abc", queryGet("x%5Fsession=abc", "x_session"))
+	require.Equal(t, "abc", queryGet("x_session=abc&x_session=def", "x_session"))
+	require.Empty(t, queryGet("x_session=%zz", "x_session"))
+	// url.ParseQuery rejects pairs containing semicolons, matching the original
+	// URL.Query().Get behaviour.
+	require.Empty(t, queryGet("x_session=abc;y=1", "x_session"))
+	require.Empty(t, queryGet("x_session=abc", "x_session2"))
+}
+
+func TestPacketPayloadAuto(t *testing.T) {
+	config, err := newConfig(option.V2RayXHTTPOptions{UplinkDataPlacement: placementAuto})
+	require.NoError(t, err)
+	payload := bytes.Repeat([]byte("y"), 4096)
+
+	t.Run("body", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "http://example.com/xhttp/", bytes.NewReader(payload))
+		decoded, err := config.extractPacketPayload(request, 1<<20)
+		require.NoError(t, err)
+		require.Equal(t, payload, decoded)
+	})
+	t.Run("header-cookie-body", func(t *testing.T) {
+		request := httptest.NewRequest(http.MethodPost, "http://example.com/xhttp/", bytes.NewReader(payload))
+		request.Header.Set(config.dataKey+"-0", base64.RawURLEncoding.EncodeToString([]byte("head")))
+		request.AddCookie(&http.Cookie{Name: config.dataKey + "_0", Value: base64.RawURLEncoding.EncodeToString([]byte("cookie"))})
+		decoded, err := config.extractPacketPayload(request, 1<<20)
+		require.NoError(t, err)
+		require.Equal(t, append([]byte("head"), append([]byte("cookie"), payload...)...), decoded)
+	})
 }
 
 func TestResponsePadding(t *testing.T) {

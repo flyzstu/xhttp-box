@@ -1,7 +1,6 @@
 package v2rayxhttp
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net"
@@ -299,7 +298,7 @@ func (r *waitingResponseBody) Close() error {
 	return nil
 }
 
-func (c *clientTarget) sendPacket(ctx context.Context, transport http.RoundTripper, sessionID string, sequence uint64, payload []byte) error {
+func (c *clientTarget) sendPacket(ctx context.Context, transport http.RoundTripper, sessionID string, sequence uint64, payload, scratch []byte) error {
 	request, err := http.NewRequestWithContext(ctx, c.config.uplinkMethod, c.requestURL, nil)
 	if err != nil {
 		return err
@@ -310,7 +309,7 @@ func (c *clientTarget) sendPacket(ctx context.Context, transport http.RoundTripp
 		return err
 	}
 	defer response.Body.Close()
-	_, _ = io.Copy(io.Discard, response.Body)
+	_, _ = io.CopyBuffer(io.Discard, response.Body, scratch)
 	if response.StatusCode != http.StatusOK {
 		return E.New("xhttp: unexpected upload status: ", response.Status)
 	}
@@ -362,6 +361,7 @@ type packetWriter struct {
 	once       sync.Once
 	access     sync.Mutex
 	err        error
+	scratch    [4096]byte
 }
 
 func newPacketWriter(ctx context.Context, target *clientTarget, xmuxClient *xmuxClient, sessionID string) *packetWriter {
@@ -377,13 +377,16 @@ func (w *packetWriter) Write(payload []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	copyPayload := bytes.Clone(payload)
+	copyPayload := acquirePacketBuffer(len(payload))
+	copy(copyPayload, payload)
 	select {
 	case w.packets <- copyPayload:
 		return len(payload), nil
 	case <-w.closed:
+		releasePacketBuffer(copyPayload)
 		return 0, net.ErrClosed
 	case <-w.ctx.Done():
+		releasePacketBuffer(copyPayload)
 		return 0, w.ctx.Err()
 	}
 }
@@ -392,52 +395,64 @@ func (w *packetWriter) run() {
 	var sequence uint64
 	var remainder []byte
 	for {
-		select {
-		case first := <-w.packets:
-			limit := w.target.config.scMaxPost.random()
-			payload := append([]byte(nil), remainder...)
-			remainder = nil
-			payload = append(payload, first...)
-			for len(payload) < limit {
-				select {
-				case next := <-w.packets:
-					payload = append(payload, next...)
-				default:
-					goto flush
-				}
-			}
-		flush:
-			if len(payload) > limit {
-				remainder = append(remainder, payload[limit:]...)
-				payload = payload[:limit]
-			}
-			if !w.target.xmux.consumePacketRequest(w.xmuxClient) {
-				w.xmuxClient = w.target.xmux.acquireRequest()
-			}
-			if err := w.target.sendPacket(w.ctx, w.xmuxClient.transport, w.sessionID, sequence, payload); err != nil {
-				w.access.Lock()
-				w.err = err
-				w.access.Unlock()
+		var first []byte
+		if remainder != nil {
+			// Flush an unsent tail before waiting for new data; otherwise a
+			// write larger than one post limit could stall indefinitely.
+			first, remainder = remainder, nil
+		} else {
+			select {
+			case first = <-w.packets:
+			case <-w.closed:
+				return
+			case <-w.ctx.Done():
 				return
 			}
-			sequence++
-			interval := time.Duration(w.target.config.scMinInterval.random()) * time.Millisecond
-			if interval > 0 {
-				timer := time.NewTimer(interval)
-				select {
-				case <-timer.C:
-				case <-w.closed:
-					timer.Stop()
-					return
-				case <-w.ctx.Done():
-					timer.Stop()
-					return
-				}
+		}
+		limit := w.target.config.scMaxPost.random()
+		payload := first
+		// Coalesce already queued writes into the same post. A single write is
+		// sent in place, so the common path copies the payload only once in
+		// Write instead of once here as well.
+		for len(payload) < limit {
+			select {
+			case next := <-w.packets:
+				payload = append(payload, next...)
+				releasePacketBuffer(next)
+			default:
+				goto flush
 			}
-		case <-w.closed:
+		}
+	flush:
+		if len(payload) > limit {
+			remainder = acquirePacketBuffer(len(payload) - limit)
+			copy(remainder, payload[limit:])
+			payload = payload[:limit]
+		}
+		if !w.target.xmux.consumePacketRequest(w.xmuxClient) {
+			w.xmuxClient = w.target.xmux.acquireRequest()
+		}
+		err := w.target.sendPacket(w.ctx, w.xmuxClient.transport, w.sessionID, sequence, payload, w.scratch[:])
+		releasePacketBuffer(payload)
+		if err != nil {
+			w.access.Lock()
+			w.err = err
+			w.access.Unlock()
 			return
-		case <-w.ctx.Done():
-			return
+		}
+		sequence++
+		interval := time.Duration(w.target.config.scMinInterval.random()) * time.Millisecond
+		if interval > 0 {
+			timer := time.NewTimer(interval)
+			select {
+			case <-timer.C:
+			case <-w.closed:
+				timer.Stop()
+				return
+			case <-w.ctx.Done():
+				timer.Stop()
+				return
+			}
 		}
 	}
 }
