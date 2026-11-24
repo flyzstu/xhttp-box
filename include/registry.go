@@ -21,18 +21,13 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/block"
-	"github.com/sagernet/sing-box/protocol/bridge"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/mixed"
 	"github.com/sagernet/sing-box/protocol/redirect"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
-	"github.com/sagernet/sing-box/protocol/shadowtls"
-	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
-	"github.com/sagernet/sing-box/protocol/ssh"
-	"github.com/sagernet/sing-box/protocol/tor"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
@@ -61,10 +56,8 @@ func InboundRegistry() *inbound.Registry {
 	mixed.RegisterInbound(registry)
 
 	shadowsocks.RegisterInbound(registry)
-	snell.RegisterInbound(registry)
 	vmess.RegisterInbound(registry)
 	trojan.RegisterInbound(registry)
-	shadowtls.RegisterInbound(registry)
 	vless.RegisterInbound(registry)
 	anytls.RegisterInbound(registry)
 
@@ -79,7 +72,6 @@ func OutboundRegistry() *outbound.Registry {
 	registry := outbound.NewRegistry()
 
 	direct.RegisterOutbound(registry)
-	bridge.RegisterOutbound(registry)
 
 	block.RegisterOutbound(registry)
 
@@ -90,12 +82,8 @@ func OutboundRegistry() *outbound.Registry {
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
 	shadowsocks.RegisterOutbound(registry)
-	snell.RegisterOutbound(registry)
 	vmess.RegisterOutbound(registry)
 	trojan.RegisterOutbound(registry)
-	tor.RegisterOutbound(registry)
-	ssh.RegisterOutbound(registry)
-	shadowtls.RegisterOutbound(registry)
 	vless.RegisterOutbound(registry)
 	anytls.RegisterOutbound(registry)
 
@@ -173,6 +161,12 @@ func registerStubForRemovedInbounds(registry *inbound.Registry) {
 	inbound.Register[option.NaiveInboundOptions](registry, C.TypeNaive, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.NaiveInboundOptions) (adapter.Inbound, error) {
 		return nil, E.New("NaiveProxy is removed in xhttp-box, use XHTTP or AnyTLS instead")
 	})
+	inbound.Register[option.SnellInboundOptions](registry, C.TypeSnell, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SnellInboundOptions) (adapter.Inbound, error) {
+		return nil, E.New("Snell is removed in xhttp-box")
+	})
+	inbound.Register[option.ShadowTLSInboundOptions](registry, C.TypeShadowTLS, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowTLSInboundOptions) (adapter.Inbound, error) {
+		return nil, E.New("ShadowTLS is removed in xhttp-box")
+	})
 }
 
 func registerStubForRemovedOutbounds(registry *outbound.Registry) {
@@ -184,5 +178,20 @@ func registerStubForRemovedOutbounds(registry *outbound.Registry) {
 	})
 	outbound.Register[option.NaiveOutboundOptions](registry, C.TypeNaive, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.NaiveOutboundOptions) (adapter.Outbound, error) {
 		return nil, E.New("NaiveProxy is removed in xhttp-box, use XHTTP or AnyTLS instead")
+	})
+	outbound.Register[option.BridgeOutboundOptions](registry, C.TypeBridge, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.BridgeOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("Bridge outbound is removed in xhttp-box")
+	})
+	outbound.Register[option.SnellOutboundOptions](registry, C.TypeSnell, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SnellOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("Snell is removed in xhttp-box")
+	})
+	outbound.Register[option.TorOutboundOptions](registry, C.TypeTor, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TorOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("Tor is removed in xhttp-box")
+	})
+	outbound.Register[option.SSHOutboundOptions](registry, C.TypeSSH, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.SSHOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("SSH outbound is removed in xhttp-box")
+	})
+	outbound.Register[option.ShadowTLSOutboundOptions](registry, C.TypeShadowTLS, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowTLSOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("ShadowTLS is removed in xhttp-box")
 	})
 }
