@@ -1269,6 +1269,34 @@ func resolveTailscaleEndpoint(instance *Instance, tag string) (adapter.Endpoint,
 	return endpoint, nil
 }
 
+func resolveTailscaleProvider(instance *Instance, tag string) (adapter.TailscaleEndpoint, string, error) {
+	if tag != "" {
+		endpoint, err := resolveTailscaleEndpoint(instance, tag)
+		if err != nil {
+			return nil, "", err
+		}
+		provider, loaded := endpoint.(adapter.TailscaleEndpoint)
+		if !loaded {
+			return nil, "", status.Error(codes.FailedPrecondition, "endpoint does not support tailscale")
+		}
+		return provider, endpoint.Tag(), nil
+	}
+	endpointManager := service.FromContext[adapter.EndpointManager](instance.ctx)
+	if endpointManager == nil {
+		return nil, "", status.Error(codes.FailedPrecondition, "endpoint manager not available")
+	}
+	for _, endpoint := range endpointManager.Endpoints() {
+		if endpoint.Type() != C.TypeTailscale {
+			continue
+		}
+		provider, loaded := endpoint.(adapter.TailscaleEndpoint)
+		if loaded {
+			return provider, endpoint.Tag(), nil
+		}
+	}
+	return nil, "", status.Error(codes.NotFound, "no Tailscale endpoint found")
+}
+
 func NewNetworkQualityTestProgress(progress networkquality.Progress) *NetworkQualityTestProgress {
 	return &NetworkQualityTestProgress{
 		Phase:                    int32(progress.Phase),
