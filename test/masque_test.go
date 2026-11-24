@@ -40,10 +40,10 @@ type masqueEnvironment struct {
 func startMASQUE(t *testing.T, serverVersions []int, clientVersion int, disableVersionFallback bool, mtu uint32, serverRoutes []netip.Prefix, clientRoutes []netip.Prefix) masqueEnvironment {
 	t.Helper()
 	environment := masqueEnvironment{
-		serverProxyPort: reserveOpenVPNTCPPort(t),
-		clientProxyPort: reserveOpenVPNTCPPort(t),
+		serverProxyPort: reserveTCPPort(t),
+		clientProxyPort: reserveTCPPort(t),
 	}
-	masquePort := reserveOpenVPNEchoPort(t)
+	masquePort := reserveEchoPort(t)
 	environment.serverPort = masquePort
 	_, certPem, keyPem := createSelfSignedCertificate(t, "example.org")
 	users := []auth.User{{Username: "sekai", Password: "password"}}
@@ -85,7 +85,7 @@ func startMASQUE(t *testing.T, serverVersions []int, clientVersion int, disableV
 		DisableVersionFallback: disableVersionFallback,
 		AdvertiseRoutes:        clientRoutes,
 	}, environment.clientProxyPort, "127.0.0.1"))
-	waitForOpenVPNClientReady(t, environment.clientProxyPort, reserveOpenVPNEchoPort(t), masqueServerAddress)
+	waitForProxyClientReady(t, environment.clientProxyPort, reserveEchoPort(t), masqueServerAddress)
 	return environment
 }
 
@@ -165,23 +165,23 @@ func TestMASQUESelfToSelf(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			environment := startMASQUE(t, nil, testCase.version, true, 0, nil, nil)
-			testSuitOpenVPN(t, environment.clientProxyPort, reserveOpenVPNEchoPort(t), masqueServerAddress)
+			testProxySuit(t, environment.clientProxyPort, reserveEchoPort(t), masqueServerAddress)
 		})
 	}
 }
 
 func TestMASQUEVersionFallback(t *testing.T) {
 	environment := startMASQUE(t, []int{1, 2}, 0, false, 0, nil, nil)
-	testSuitOpenVPN(t, environment.clientProxyPort, reserveOpenVPNEchoPort(t), masqueServerAddress)
+	testProxySuit(t, environment.clientProxyPort, reserveEchoPort(t), masqueServerAddress)
 }
 
 func TestMASQUEAdvertiseRoutes(t *testing.T) {
 	environment := startMASQUE(t, nil, 0, false, 0, nil, []netip.Prefix{netip.MustParsePrefix("10.9.0.0/24")})
-	readinessPort := reserveOpenVPNEchoPort(t)
-	closeEcho := startOpenVPNReadinessEcho(t, readinessPort)
-	waitForOpenVPNRemoteReady(t, environment.serverProxyPort, masqueSiteAddress, readinessPort, 30*time.Second)
+	readinessPort := reserveEchoPort(t)
+	closeEcho := startReadinessEcho(t, readinessPort)
+	waitForProxyRemoteReady(t, environment.serverProxyPort, masqueSiteAddress, readinessPort, 30*time.Second)
 	closeEcho()
-	testSuitOpenVPN(t, environment.serverProxyPort, reserveOpenVPNEchoPort(t), masqueSiteAddress)
+	testProxySuit(t, environment.serverProxyPort, reserveEchoPort(t), masqueSiteAddress)
 }
 
 func TestMASQUENoRoute(t *testing.T) {
@@ -201,7 +201,7 @@ func TestMASQUENoRoute(t *testing.T) {
 
 func TestMASQUEPacketTooBig(t *testing.T) {
 	environment := startMASQUE(t, nil, 3, true, 1500, nil, nil)
-	testSuitOpenVPN(t, environment.clientProxyPort, reserveOpenVPNEchoPort(t), masqueServerAddress)
+	testProxySuit(t, environment.clientProxyPort, reserveEchoPort(t), masqueServerAddress)
 }
 
 func TestMASQUEReconnectBackoff(t *testing.T) {
@@ -227,7 +227,7 @@ func TestMASQUEReconnectBackoff(t *testing.T) {
 			ServerPort: uint16(listener.Addr().(*net.TCPAddr).Port),
 		},
 		Version: 1,
-	}, reserveOpenVPNTCPPort(t), ""))
+	}, reserveTCPPort(t), ""))
 	time.Sleep(2500 * time.Millisecond)
 	require.Positive(t, accepted.Load())
 	require.LessOrEqual(t, accepted.Load(), int32(3))
@@ -280,8 +280,8 @@ func TestMASQUEStuckClient(t *testing.T) {
 	case <-time.After(10 * time.Second):
 	}
 
-	echoPort := reserveOpenVPNEchoPort(t)
-	closeEcho := startOpenVPNReadinessEcho(t, echoPort)
+	echoPort := reserveEchoPort(t)
+	closeEcho := startReadinessEcho(t, echoPort)
 	defer closeEcho()
-	require.NoError(t, probeOpenVPNTCPWithTimeout(environment.clientProxyPort, masqueServerAddress, echoPort, 5*time.Second))
+	require.NoError(t, probeProxyTCPWithTimeout(environment.clientProxyPort, masqueServerAddress, echoPort, 5*time.Second))
 }

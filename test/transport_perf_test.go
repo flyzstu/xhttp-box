@@ -189,9 +189,9 @@ func startPerfHTTPTunnelChain(t *testing.T) (mixedInPort uint16, echoPort uint16
 	t.Helper()
 	_, certA, keyA := createSelfSignedCertificate(t, "example.org")
 	_, certB, keyB := createSelfSignedCertificate(t, "example.org")
-	mixedInPort = reserveOpenVPNTCPPort(t)
-	httpOutPort := reserveOpenVPNTCPPort(t)
-	echoPort = reserveOpenVPNEchoPort(t)
+	mixedInPort = reserveTCPPort(t)
+	httpOutPort := reserveTCPPort(t)
+	echoPort = reserveEchoPort(t)
 
 	users := []auth.User{{Username: perfUsername, Password: perfUserPassword}}
 	startInstance(t, option.Options{
@@ -292,7 +292,7 @@ func startPerfHTTPTunnelChain(t *testing.T) (mixedInPort uint16, echoPort uint16
 // startPerfMixedUDPChain starts one instance: socks UDP in -> mixed? (plain SOCKS UDP relay to direct)
 func startPerfDirectUDPChain(t *testing.T) (proxyPort uint16) {
 	t.Helper()
-	proxyPort = reserveOpenVPNTCPPort(t)
+	proxyPort = reserveTCPPort(t)
 	startInstance(t, option.Options{
 		Inbounds: []option.Inbound{
 			{
@@ -313,7 +313,7 @@ func startPerfDirectUDPChain(t *testing.T) (proxyPort uint16) {
 
 func TestPerfDirectUDP(t *testing.T) {
 	proxyPort := startPerfDirectUDPChain(t)
-	echoPort := reserveOpenVPNUDPPort(t)
+	echoPort := reserveUDPPort(t)
 	closeEcho := startPerfUDPEchoServer(t, echoPort)
 	defer closeEcho()
 
@@ -325,10 +325,10 @@ func TestPerfDirectUDP(t *testing.T) {
 
 func TestPerfMASQUETunnelTCP(t *testing.T) {
 	environment := startMASQUE(t, nil, 3, true, 1500, nil, nil)
-	readinessPort := reserveOpenVPNEchoPort(t)
-	closeEcho := startOpenVPNReadinessEcho(t, readinessPort)
+	readinessPort := reserveEchoPort(t)
+	closeEcho := startReadinessEcho(t, readinessPort)
 	defer closeEcho()
-	waitForOpenVPNClientReady(t, environment.clientProxyPort, readinessPort, masqueServerAddress)
+	waitForProxyClientReady(t, environment.clientProxyPort, readinessPort, masqueServerAddress)
 
 	dialer := socks.NewClient(N.SystemDialer, M.ParseSocksaddrHostPort("127.0.0.1", environment.clientProxyPort), socks.Version5, "", "")
 	conn, err := dialer.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddrHostPort(masqueServerAddress, readinessPort))
@@ -338,10 +338,10 @@ func TestPerfMASQUETunnelTCP(t *testing.T) {
 
 func TestPerfMASQUETunnelUDP(t *testing.T) {
 	environment := startMASQUE(t, nil, 3, true, 1500, nil, nil)
-	echoPort := reserveOpenVPNUDPPort(t)
+	echoPort := reserveUDPPort(t)
 	closeEcho := startPerfUDPEchoServer(t, echoPort)
 	defer closeEcho()
-	waitForOpenVPNClientReady(t, environment.clientProxyPort, reserveOpenVPNEchoPort(t), masqueServerAddress)
+	waitForProxyClientReady(t, environment.clientProxyPort, reserveEchoPort(t), masqueServerAddress)
 
 	dialer := socks.NewClient(N.SystemDialer, M.ParseSocksaddrHostPort("127.0.0.1", environment.clientProxyPort), socks.Version5, "", "")
 	udpConn, err := dialer.ListenPacket(context.Background(), M.ParseSocksaddrHostPort(masqueServerAddress, echoPort))
@@ -351,7 +351,7 @@ func TestPerfMASQUETunnelUDP(t *testing.T) {
 
 func TestPerfHTTPTunnelTCP(t *testing.T) {
 	mixedInPort, echoPort := startPerfHTTPTunnelChain(t)
-	closeEcho := startOpenVPNReadinessEcho(t, echoPort)
+	closeEcho := startReadinessEcho(t, echoPort)
 	defer closeEcho()
 	client := perfSocksTLSClient(t, mixedInPort, perfUsername, perfUserPassword)
 	conn, err := client.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddrHostPort("127.0.0.1", echoPort))
