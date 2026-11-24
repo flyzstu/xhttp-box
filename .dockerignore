@@ -1,0 +1,16 @@
+# Keep the build context small: only sources needed to compile the binary.
+.git
+.github
+docs
+test
+dist
+bin
+venv
+*.md
+!README.md
+!NOTICE.md
+!LICENSE
+examples
+release/config
+release/completions
+release/local

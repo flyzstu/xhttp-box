@@ -73,3 +73,32 @@ jobs:
           -tags "$BUILD_TAGS"
           -ldflags "$LDFLAGS"
           ./cmd/sing-box
+
+  slim:
+    name: Slim build and XHTTP test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.4'
+          cache: true
+
+      - name: Set slim build options
+        run: |
+          echo "SLIM_TAGS=$(cat release/DEFAULT_BUILD_TAGS_SLIM)" >> "$GITHUB_ENV"
+          echo "LDFLAGS=$(cat release/LDFLAGS)" >> "$GITHUB_ENV"
+
+      - name: Build (slim tags)
+        run: >-
+          go build -trimpath
+          -o "$RUNNER_TEMP/xhttp-box-slim"
+          -tags "$SLIM_TAGS"
+          -ldflags "$LDFLAGS"
+          ./cmd/sing-box
+
+      - name: Test XHTTP (slim tags)
+        run: go test -count=1 -tags "$SLIM_TAGS" ./transport/v2rayxhttp

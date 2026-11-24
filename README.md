@@ -115,6 +115,13 @@ go build -o xhttp-box ./cmd/sing-box
 The source entry point and Go module retain their upstream paths to keep
 upstream synchronization practical; the distributed command is `xhttp-box`.
 
+For a smaller server binary without rarely used features (tailscale,
+openvpn/openconnect, ccm/ocm, cloudflared, usbip), build with the slim tag set:
+
+```bash
+make build-slim
+```
+
 Run the XHTTP test suite:
 
 ```bash
