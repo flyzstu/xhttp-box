@@ -39,7 +39,6 @@
 | `selector`     | [Selector](./selector/)         |
 | `urltest`      | [URLTest](./urltest/)           |
 | `weighted`     | [Weighted](./weighted/)         |
-| `naive`        | [NaiveProxy](./naive/)          |
 
 #### tag
 

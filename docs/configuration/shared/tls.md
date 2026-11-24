@@ -515,8 +515,6 @@ When object, an inline certificate provider. See [Certificate Provider](/configu
     Additionally, the library lacks active maintenance and has poor code quality,
     making it unsuitable for censorship circumvention.
 
-    For TLS fingerprint resistance, use [NaiveProxy](/configuration/inbound/naive/) instead.
-
 uTLS is a fork of "crypto/tls", which provides ClientHello fingerprinting resistance.
 
 Available fingerprint values:

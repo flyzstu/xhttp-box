@@ -26,7 +26,6 @@ import (
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/mixed"
-	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-box/protocol/redirect"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
@@ -65,7 +64,6 @@ func InboundRegistry() *inbound.Registry {
 	snell.RegisterInbound(registry)
 	vmess.RegisterInbound(registry)
 	trojan.RegisterInbound(registry)
-	naive.RegisterInbound(registry)
 	shadowtls.RegisterInbound(registry)
 	vless.RegisterInbound(registry)
 	anytls.RegisterInbound(registry)
@@ -95,7 +93,6 @@ func OutboundRegistry() *outbound.Registry {
 	snell.RegisterOutbound(registry)
 	vmess.RegisterOutbound(registry)
 	trojan.RegisterOutbound(registry)
-	registerNaiveOutbound(registry)
 	tor.RegisterOutbound(registry)
 	ssh.RegisterOutbound(registry)
 	shadowtls.RegisterOutbound(registry)
@@ -173,6 +170,9 @@ func registerStubForRemovedInbounds(registry *inbound.Registry) {
 	inbound.Register[option.ShadowsocksInboundOptions](registry, C.TypeShadowsocksR, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowsocksInboundOptions) (adapter.Inbound, error) {
 		return nil, E.New("ShadowsocksR is deprecated and removed in sing-box 1.6.0")
 	})
+	inbound.Register[option.NaiveInboundOptions](registry, C.TypeNaive, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.NaiveInboundOptions) (adapter.Inbound, error) {
+		return nil, E.New("NaiveProxy is removed in xhttp-box, use XHTTP or AnyTLS instead")
+	})
 }
 
 func registerStubForRemovedOutbounds(registry *outbound.Registry) {
@@ -181,5 +181,8 @@ func registerStubForRemovedOutbounds(registry *outbound.Registry) {
 	})
 	outbound.Register[option.StubOptions](registry, C.TypeWireGuard, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.StubOptions) (adapter.Outbound, error) {
 		return nil, E.New("WireGuard outbound is deprecated in sing-box 1.11.0 and removed in sing-box 1.13.0, use WireGuard endpoint instead")
+	})
+	outbound.Register[option.NaiveOutboundOptions](registry, C.TypeNaive, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.NaiveOutboundOptions) (adapter.Outbound, error) {
+		return nil, E.New("NaiveProxy is removed in xhttp-box, use XHTTP or AnyTLS instead")
 	})
 }

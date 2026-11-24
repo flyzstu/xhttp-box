@@ -63,7 +63,7 @@ func init() {
 	sharedFlags = append(sharedFlags, "-ldflags", build_shared.LinkerFlags(currentTag, false))
 	debugFlags = append(debugFlags, "-ldflags", build_shared.LinkerFlags(currentTag, true))
 
-	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "with_usbip", "with_openvpn", "with_openconnect", "badlinkname", "tfogo_checklinkname0")
+	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_clash_api", "with_usbip", "with_openvpn", "with_openconnect", "badlinkname", "tfogo_checklinkname0")
 	darwinTags = append(darwinTags, "with_dhcp", "grpcnotrace")
 	// memcTags = append(memcTags, "with_tailscale")
 	sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
@@ -175,8 +175,8 @@ func buildAndroid() {
 		Tags:       mainTags,
 	}, bindTarget)
 
-	// Build legacy variant (SDK 21, no naive outbound)
-	legacyTags := filterTags(sharedTags, "with_naive_outbound")
+	// Legacy variant (SDK 21) shares the main tag set since naive outbound was removed
+	legacyTags := append([]string{}, sharedTags...)
 	// legacyTags = append(legacyTags, memcTags...)
 	if debugEnabled {
 		legacyTags = append(legacyTags, debugTags...)

@@ -30,7 +30,6 @@ const (
 	ImageShadowsocksRustClient = "ghcr.io/shadowsocks/sslocal-rust:latest"
 	ImageV2RayCore             = "v2fly/v2fly-core:latest"
 	ImageTrojan                = "trojangfw/trojan:latest"
-	ImageNaive                 = "pocat/naiveproxy:client"
 	ImageBoringTun             = "ghcr.io/ntkme/boringtun:edge"
 	ImageHysteria              = "tobyxdd/hysteria:v1.3.5"
 	ImageHysteria2             = "tobyxdd/hysteria:v2"
@@ -47,7 +46,6 @@ var allImages = []string{
 	ImageShadowsocksRustClient,
 	ImageV2RayCore,
 	ImageTrojan,
-	ImageNaive,
 	ImageBoringTun,
 	ImageHysteria,
 	ImageHysteria2,

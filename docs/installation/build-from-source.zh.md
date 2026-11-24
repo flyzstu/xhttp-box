@@ -51,7 +51,7 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 
 | 构建标记                               | 默认启动              | 说明                                                                                                                                                                                                                                                                                                                             |
 |------------------------------------|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `with_quic`                        | :material-check:  | Build with QUIC support, see [QUIC and HTTP3 DNS transports](/zh/configuration/dns/server/), [Naive inbound](/zh/configuration/inbound/naive/), [Hysteria Inbound](/zh/configuration/inbound/hysteria/), [Hysteria Outbound](/zh/configuration/outbound/hysteria/) and [V2Ray Transport#QUIC](/zh/configuration/shared/v2ray-transport#quic). |
+| `with_quic`                        | :material-check:  | Build with QUIC support, see [QUIC and HTTP3 DNS transports](/zh/configuration/dns/server/), [Hysteria Inbound](/zh/configuration/inbound/hysteria/), [Hysteria Outbound](/zh/configuration/outbound/hysteria/) and [V2Ray Transport#QUIC](/zh/configuration/shared/v2ray-transport#quic). |
 | `with_grpc`                        | :material-close:️ | Build with standard gRPC support, see [V2Ray Transport#gRPC](/zh/configuration/shared/v2ray-transport#grpc).                                                                                                                                                                                                                      |
 | `with_dhcp`                        | :material-check:  | Build with DHCP support, see [DHCP DNS transport](/zh/configuration/dns/server/).                                                                                                                                                                                                                                                 |
 | `with_wireguard`                   | :material-check:  | Build with WireGuard support, see [WireGuard outbound](/zh/configuration/outbound/wireguard/).                                                                                                                                                                                                                                    |
@@ -64,7 +64,6 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 | `with_tailscale`                   | :material-check:  | 构建 Tailscale 支持，参阅 [Tailscale 端点](/zh/configuration/endpoint/tailscale)。                                                                                                                                                                                                                                                         |
 | `with_ccm`                         | :material-check:  | 构建 Claude Code Multiplexer 服务支持。                                                                                                                                                                                                                                                                                              |
 | `with_ocm`                         | :material-check:  | 构建 OpenAI Codex Multiplexer 服务支持。                                                                                                                                                                                                                                                                                             |
-| `with_naive_outbound`              | :material-check:  | 构建 NaiveProxy 出站支持，参阅 [NaiveProxy 出站](/zh/configuration/outbound/naive/)。                                                                                                                                                                                                                                                         |
 | `with_cloudflared`                 | :material-check:  | 构建 Cloudflare Tunnel 入站支持，参阅 [Cloudflared 入站](/zh/configuration/inbound/cloudflared/)。                                                                                                                                                                                                                                              |
 | `badlinkname`                      | :material-check:  | 启用 `go:linkname` 以访问标准库内部函数。                                                                                                                                                                                                                                                                                        |
 | `tfogo_checklinkname0`             | :material-check:  | 表示构建使用 `-checklinkname=0` 链接器标志，需要与 `badlinkname` 一起使用。                                                                                                                                                                                                                                                          |
@@ -87,43 +86,6 @@ go build -tags "tag_a tag_b" ./cmd/sing-box
 |------|------|
 | `release/DEFAULT_BUILD_TAGS` | Linux（常见架构）、Darwin 和 Android 的默认标签。 |
 | `release/DEFAULT_BUILD_TAGS_WINDOWS` | Windows 的默认标签（包含 `with_purego`）。 |
-| `release/DEFAULT_BUILD_TAGS_OTHERS` | 其他平台的默认标签（不含 `with_naive_outbound`）。 |
+| `release/DEFAULT_BUILD_TAGS_OTHERS` | 其他平台的默认标签。 |
 | `release/LDFLAGS` | 必需的链接器标志（参见上文）。 |
 
-## :material-layers: with_naive_outbound
-
-NaiveProxy 出站需要根据目标平台进行特殊的构建配置。
-
-### 支持的平台
-
-| 平台           | 架构                                                       | 模式     | 要求                                                  |
-|--------------|----------------------------------------------------------|--------|-----------------------------------------------------|
-| Linux        | amd64, arm64                                             | purego | 无（官方发布版本已包含库文件）                                     |
-| Linux        | 386, amd64, arm, arm64, mipsle, mips64le, riscv64, loong64 | CGO    | Chromium 工具链，运行时需要 glibc >= 2.31（loong64: >= 2.36） |
-| Linux (musl) | 386, amd64, arm, arm64, mipsle, riscv64, loong64          | CGO    | Chromium 工具链                                        |
-| Windows      | amd64, arm64                                             | purego | 无（官方发布版本已包含库文件）                                     |
-| Apple 平台     | *                                                        | CGO    | Xcode                                               |
-| Android      | *                                                        | CGO    | Android NDK                                          |
-
-### Windows
-
-使用 `with_purego` 标记。
-
-官方发布版本已包含 `libcronet.dll`。自行构建时，从 [cronet-go releases](https://github.com/sagernet/cronet-go/releases) 下载并放置在 `sing-box.exe` 相同目录或 `PATH` 中的任意目录。
-
-### Linux (purego, 仅 amd64/arm64)
-
-使用 `with_purego` 标记。
-
-官方发布版本已包含 `libcronet.so`。自行构建时，从 [cronet-go releases](https://github.com/sagernet/cronet-go/releases) 下载并放置在 sing-box 二进制文件相同目录或系统库路径中。
-
-### Linux (CGO)
-
-参阅 [cronet-go](https://github.com/sagernet/cronet-go#linux-build-instructions)。
-
-- **glibc 构建**：运行时需要 glibc >= 2.31
-- **musl 构建**：使用 `with_musl` 标记，静态链接，无运行时要求
-
-### Apple 平台 / Android
-
-参阅 [cronet-go](https://github.com/sagernet/cronet-go)。

@@ -168,7 +168,6 @@ nav:
           - Shadowsocks: configuration/inbound/shadowsocks.md
           - VMess: configuration/inbound/vmess.md
           - Trojan: configuration/inbound/trojan.md
-          - Naive: configuration/inbound/naive.md
           - Hysteria: configuration/inbound/hysteria.md
           - ShadowTLS: configuration/inbound/shadowtls.md
           - VLESS: configuration/inbound/vless.md
@@ -190,7 +189,6 @@ nav:
           - Shadowsocks: configuration/outbound/shadowsocks.md
           - VMess: configuration/outbound/vmess.md
           - Trojan: configuration/outbound/trojan.md
-          - Naive: configuration/outbound/naive.md
           - WireGuard: configuration/outbound/wireguard.md
           - Hysteria: configuration/outbound/hysteria.md
           - ShadowTLS: configuration/outbound/shadowtls.md
