@@ -101,7 +101,6 @@ nav:
               - DHCP: configuration/dns/server/dhcp.md
               - mDNS: configuration/dns/server/mdns.md
               - FakeIP: configuration/dns/server/fakeip.md
-              - Tailscale: configuration/dns/server/tailscale.md
               - Resolved: configuration/dns/server/resolved.md
           - DNS Rule: configuration/dns/rule.md
           - DNS Rule Action: configuration/dns/rule_action.md
@@ -135,7 +134,6 @@ nav:
           - Certificate Provider:
               - configuration/shared/certificate-provider/index.md
               - ACME: configuration/shared/certificate-provider/acme.md
-              - Tailscale: configuration/shared/certificate-provider/tailscale.md
               - Cloudflare Origin CA: configuration/shared/certificate-provider/cloudflare-origin-ca.md
           - DNS01 Challenge Fields: configuration/shared/dns01_challenge.md
           - Pre-match: configuration/shared/pre-match.md
@@ -153,7 +151,6 @@ nav:
       - Endpoint:
           - configuration/endpoint/index.md
           - WireGuard: configuration/endpoint/wireguard.md
-          - Tailscale: configuration/endpoint/tailscale.md
       - Inbound:
           - configuration/inbound/index.md
           - Direct: configuration/inbound/direct.md
@@ -201,7 +198,6 @@ nav:
       - Service:
           - configuration/service/index.md
           - sing-box API: configuration/service/api.md
-          - DERP: configuration/service/derp.md
           - Resolved: configuration/service/resolved.md
           - SSM API: configuration/service/ssm-api.md
           - CCM: configuration/service/ccm.md

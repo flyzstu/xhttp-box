@@ -25,7 +25,6 @@ icon: material/new-box
 |-------------------|---------------------------------------|
 | `api`             | [sing-box API](./api)                 |
 | `ccm`             | [CCM](./ccm)                          |
-| `derp`            | [DERP](./derp)                        |
 | `hysteria-realm`  | [Hysteria Realm](./hysteria-realm)    |
 | `ocm`             | [OCM](./ocm)                          |
 | `resolved`        | [Resolved](./resolved)                |

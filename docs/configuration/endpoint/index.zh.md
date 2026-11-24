@@ -22,7 +22,6 @@
 | 类型               | 格式                                      |
 |------------------|-----------------------------------------|
 | `wireguard`      | [WireGuard](./wireguard/)               |
-| `tailscale`      | [Tailscale](./tailscale/)               |
 
 #### tag
 
