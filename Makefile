@@ -1,6 +1,7 @@
 NAME = xhttp-box
 COMMIT = $(shell git rev-parse --short HEAD)
 TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS_OTHERS)
+TAGS_SLIM ?= $(shell cat release/DEFAULT_BUILD_TAGS_SLIM)
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
@@ -28,6 +29,10 @@ ci_build:
 	export GOTOOLCHAIN=local && \
 	go build $(PARAMS) $(MAIN) && \
 	go build $(MAIN_PARAMS) $(MAIN)
+
+build-slim:
+	export GOTOOLCHAIN=local && \
+	go build -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' $(LDFLAGS_SHARED) -s -w -buildid=" -tags "$(TAGS_SLIM)" $(MAIN)
 
 generate_completions:
 	go run -v --tags "$(TAGS),generate,generate_completions" $(MAIN)
